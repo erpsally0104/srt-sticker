@@ -144,42 +144,75 @@ def build_label_image(req, batch_no):
     return img
 
 
+def _wrap_text_pixel(draw, text, font, max_width):
+    """
+    Word-wrap text based on actual pixel width measurement (not char count).
+    Returns a list of lines that each fit within max_width pixels.
+    """
+    words = text.split()
+    lines = []
+    current_line = ""
+
+    for word in words:
+        test_line = f"{current_line} {word}".strip() if current_line else word
+        bbox = draw.textbbox((0, 0), test_line, font=font)
+        if (bbox[2] - bbox[0]) <= max_width:
+            current_line = test_line
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+
+    if current_line:
+        lines.append(current_line)
+
+    return lines
+
+
 def build_ingredients_label_image(req):
     """
-    Build a simple ingredients-only sticker.
-    Layout: "Ingredients : <text>" with word wrapping on the 50x38mm label.
+    Build an ingredients-only sticker that fills the full 50x38mm label.
+    "Ingredients :" as bold header, then the text in a large font,
+    auto-sized to occupy as much of the label as possible.
     """
     img  = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
     draw = ImageDraw.Draw(img)
 
-    font_title = get_font(FONT_ARIAL_BD, 26)
-    font_body  = get_font(FONT_ARIAL, 22)
+    PAD = 6  # minimal padding to use full width
 
-    PAD = 10
-    y   = PAD
+    font_title = get_font(FONT_ARIAL_BD, 30)
 
     # Draw "Ingredients :" header
     title_text = "Ingredients :"
-    draw.text((PAD, y), title_text, font=font_title, fill="black")
+    draw.text((PAD, PAD), title_text, font=font_title, fill="black")
     title_bbox = draw.textbbox((0, 0), title_text, font=font_title)
-    y += (title_bbox[3] - title_bbox[1]) + 8
+    title_h = title_bbox[3] - title_bbox[1]
+    body_y_start = PAD + title_h + 6
 
-    # Word-wrap the ingredients text to fit the label width
     max_text_width = LABEL_W_PX - (PAD * 2)
+    available_h = LABEL_H_PX - body_y_start - PAD
 
-    # Calculate approximate chars per line based on font
-    avg_char_bbox = draw.textbbox((0, 0), "A", font=font_body)
-    avg_char_w = avg_char_bbox[2] - avg_char_bbox[0]
-    chars_per_line = max(10, max_text_width // avg_char_w)
+    # Auto-size: try font sizes from large to small, pick the biggest that fits
+    best_font_size = 18
+    for size in range(32, 17, -1):
+        test_font = get_font(FONT_ARIAL, size)
+        wrapped = _wrap_text_pixel(draw, req.ingredients, test_font, max_text_width)
+        line_bbox = draw.textbbox((0, 0), "Ag", font=test_font)
+        line_h = (line_bbox[3] - line_bbox[1]) + 3
+        total_h = line_h * len(wrapped)
+        if total_h <= available_h:
+            best_font_size = size
+            break
 
-    wrapped_lines = textwrap.wrap(req.ingredients, width=chars_per_line)
+    font_body = get_font(FONT_ARIAL, best_font_size)
+    wrapped_lines = _wrap_text_pixel(draw, req.ingredients, font_body, max_text_width)
+    line_bbox = draw.textbbox((0, 0), "Ag", font=font_body)
+    line_h = (line_bbox[3] - line_bbox[1]) + 3
 
-    line_h_bbox = draw.textbbox((0, 0), "Ag", font=font_body)
-    line_h = (line_h_bbox[3] - line_h_bbox[1]) + 4
-
+    y = body_y_start
     for line in wrapped_lines:
         if y + line_h > LABEL_H_PX - PAD:
-            break  # don't overflow the label
+            break
         draw.text((PAD, y), line, font=font_body, fill="black")
         y += line_h
 
