@@ -918,35 +918,46 @@ function populateHotelDropdowns() {
     return `<option value="${h}">${label}</option>`;
   }).join('');
 
-  if (printSel)    { printSel.innerHTML = opts;    printSel.value = hotels.includes(curPrint) ? curPrint : 'general'; }
-  if (productsSel) { productsSel.innerHTML = opts;  productsSel.value = hotels.includes(curProducts) ? curProducts : 'general'; }
+  if (printSel) {
+    printSel.innerHTML = opts;
+    printSel.value = hotels.includes(curPrint) ? curPrint : hotels[0] || 'general';
+  }
+  if (productsSel) {
+    productsSel.innerHTML = opts;
+    productsSel.value = hotels.includes(curProducts) ? curProducts : hotels[0] || 'general';
+  }
 }
 
 async function loadProducts() {
   const list = document.getElementById('productList');
+  let data;
   try {
     const res  = await apiFetch(`${API}/products`);
     if (!res) {
       if (list) list.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">⚠️ Server offline — start server.py to manage products.</div>';
       return;
     }
-    const data = await res.json();
-    allByHotel = data.by_hotel || {};
-    hotels     = data.hotels || Object.keys(allByHotel);
-    if (!hotels.includes('general')) hotels.unshift('general');
-
-    populateHotelDropdowns();
-
-    // Set products for print combo dropdown based on selected print hotel
-    products = allByHotel[getSelectedPrintHotel()] || [];
-    renderProducts();
+    data = await res.json();
   } catch {
     if (list) list.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">⚠️ Cannot load products — is server.py running?</div>';
+    return;
   }
+
+  allByHotel = data.by_hotel || {};
+  hotels     = data.hotels || Object.keys(allByHotel);
+  if (!hotels.includes('general')) hotels.unshift('general');
+
+  populateHotelDropdowns();
+
+  // Set products for print combo dropdown based on selected print hotel
+  const printHotel = getSelectedPrintHotel();
+  products = allByHotel[printHotel] || allByHotel['general'] || [];
+  renderProducts();
 }
 
 function onPrintHotelChange() {
-  products = allByHotel[getSelectedPrintHotel()] || [];
+  const hotel = getSelectedPrintHotel();
+  products = allByHotel[hotel] || allByHotel['general'] || [];
   // Re-render all open combo dropdowns
   document.querySelectorAll('.job-card').forEach(row => {
     const id = row.id.replace('row-','');
@@ -962,7 +973,7 @@ function renderProducts() {
   const list = document.getElementById('productList');
   if (!list) return;
   const hotel = getSelectedProductsHotel();
-  const hotelProducts = allByHotel[hotel] || [];
+  const hotelProducts = allByHotel[hotel] || allByHotel['general'] || [];
   list.innerHTML = hotelProducts.length ? hotelProducts.map(p=>`
     <div class="product-item">
       <div>
