@@ -54,9 +54,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`Product, Quantity`\n"
         "or\n"
         "`Product, Quantity, Weight`\n\n"
+        "*Ingredients sticker:*\n"
+        "`Ingredients text ;; i`\n"
+        "`Ingredients text ;; i 5`\n\n"
         "*Examples:*\n"
         "`PHALLI, 10`\n"
-        "`TOOR DAL, 5, 1 KG`\n\n"
+        "`TOOR DAL, 5, 1 KG`\n"
+        "`Refined wheat flour, Rice Flour ;; i`\n\n"
         "Use /help to see all commands.",
         parse_mode="Markdown"
     )
@@ -75,6 +79,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Print a label:*\n"
         "`Product, Quantity`\n"
         "`Product, Quantity, Weight`\n\n"
+        "*Ingredients sticker:*\n"
+        "`Ingredients text ;; i`\n"
+        "`Ingredients text ;; i 5`\n\n"
         "*General:*\n"
         "/status — Check printer status\n"
         "/listproducts — Show all products & default weights\n"
@@ -231,38 +238,55 @@ async def handle_print_request(update: Update, context: ContextTypes.DEFAULT_TYP
     failed_lines  = []
 
     for req in requests:
-        batch_no = get_next_batch_number()
-        success  = print_label(req, batch_no)
-        if success:
-            success_lines.append(
-                f"✅ *{req.product}* — {req.quantity} sticker(s) | {req.weight} | Batch: {batch_no}"
-            )
-            log_print(
-                username    = get_username(update),
-                source      = "telegram",
-                product     = req.product,
-                weight      = req.weight,
-                quantity    = req.quantity,
-                batch_no    = batch_no,
-                packed_on   = req.packed_on,
-                best_before = req.best_before
-            )
+        if req.label_type == "ingredients":
+            # Ingredients stickers don't need a batch number
+            success = print_label(req)
+            if success:
+                success_lines.append(
+                    f"✅ *Ingredients sticker* — {req.quantity} sticker(s)"
+                )
+            else:
+                failed_lines.append(f"❌ *Ingredients sticker* — print failed")
         else:
-            failed_lines.append(f"❌ *{req.product}* — print failed")
+            batch_no = get_next_batch_number()
+            success  = print_label(req, batch_no)
+            if success:
+                success_lines.append(
+                    f"✅ *{req.product}* — {req.quantity} sticker(s) | {req.weight} | Batch: {batch_no}"
+                )
+                log_print(
+                    username    = get_username(update),
+                    source      = "telegram",
+                    product     = req.product,
+                    weight      = req.weight,
+                    quantity    = req.quantity,
+                    batch_no    = batch_no,
+                    packed_on   = req.packed_on,
+                    best_before = req.best_before
+                )
+            else:
+                failed_lines.append(f"❌ *{req.product}* — print failed")
 
     # Build reply
     if len(requests) == 1 and success_lines:
-        req      = requests[0]
-        batch_no = success_lines[0].split("Batch: ")[1]
-        await update.message.reply_text(
-            f"✅ *Printing {req.quantity} sticker(s)*\n\n"
-            f"📦 Product    : {req.product}\n"
-            f"⚖️ Weight     : {req.weight}\n"
-            f"📅 Packed On  : {req.packed_on}\n"
-            f"📅 Best Before: {req.best_before}\n"
-            f"🔖 Batch No   : {batch_no}",
-            parse_mode="Markdown"
-        )
+        req = requests[0]
+        if req.label_type == "ingredients":
+            await update.message.reply_text(
+                f"✅ *Printing {req.quantity} ingredients sticker(s)*\n\n"
+                f"🧾 Ingredients: {req.ingredients}",
+                parse_mode="Markdown"
+            )
+        else:
+            batch_no = success_lines[0].split("Batch: ")[1]
+            await update.message.reply_text(
+                f"✅ *Printing {req.quantity} sticker(s)*\n\n"
+                f"📦 Product    : {req.product}\n"
+                f"⚖️ Weight     : {req.weight}\n"
+                f"📅 Packed On  : {req.packed_on}\n"
+                f"📅 Best Before: {req.best_before}\n"
+                f"🔖 Batch No   : {batch_no}",
+                parse_mode="Markdown"
+            )
     else:
         all_lines = success_lines + failed_lines
         summary   = f"*Print Summary ({len(success_lines)}/{len(requests)} succeeded)*\n\n"

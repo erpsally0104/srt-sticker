@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Tuple
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -13,6 +13,8 @@ class PrintRequest:
     quantity: int
     packed_on: str
     best_before: str
+    label_type: str = "product"  # "product" or "ingredients"
+    ingredients: str = ""        # raw ingredients text for ingredients labels
 
 
 def normalize_weight(raw: str) -> str:
@@ -60,8 +62,17 @@ def parse_message(text: str) -> Tuple[Optional[PrintRequest], Optional[str]]:
         PHALLI, 10, 2 KGS       → weight kept as "2 KGS"
         PHALLI, 10, 500 GMS     → weight kept as "500 GMS"
 
+    Ingredients-only format:
+        Refined wheat flour, Whole Wheat Flour ;; i
+        Refined wheat flour, Whole Wheat Flour ;; i 5
+
     Returns (PrintRequest, None) on success or (None, error_message) on failure.
     """
+
+    # ── Check for ingredients-only format: text ;; i [quantity] ──
+    if ";;" in text:
+        return _parse_ingredients(text)
+
     parts = [p.strip() for p in text.split(',')]
 
     if len(parts) < 2 or len(parts) > 3:
@@ -103,6 +114,53 @@ def parse_message(text: str) -> Tuple[Optional[PrintRequest], Optional[str]]:
     ), None
 
 
+def _parse_ingredients(text: str) -> Tuple[Optional[PrintRequest], Optional[str]]:
+    """
+    Parse ingredients-only sticker format.
+
+    Format: <ingredients text> ;; i [quantity]
+    Examples:
+        Refined wheat flour, Whole Wheat Flour ;; i       → 1 sticker
+        Refined wheat flour, Whole Wheat Flour ;; i 5     → 5 stickers
+    """
+    parts = text.split(";;")
+    if len(parts) != 2:
+        return None, _ingredients_format_error()
+
+    ingredients_text = parts[0].strip()
+    suffix = parts[1].strip()
+
+    # suffix should be "i" or "i <number>"
+    suffix_parts = suffix.split()
+    if not suffix_parts or suffix_parts[0].lower() != "i":
+        return None, _ingredients_format_error()
+
+    if not ingredients_text:
+        return None, "⚠️ Ingredients text cannot be empty."
+
+    # Quantity (default 1)
+    quantity = 1
+    if len(suffix_parts) >= 2:
+        try:
+            quantity = int(suffix_parts[1])
+            if quantity <= 0:
+                return None, "⚠️ Quantity must be a positive number."
+            if quantity > 500:
+                return None, "⚠️ Quantity cannot exceed 500 per request."
+        except ValueError:
+            return None, "⚠️ Quantity after `i` must be a valid number.\n\n" + _ingredients_format_error()
+
+    return PrintRequest(
+        product="INGREDIENTS",
+        weight="",
+        quantity=quantity,
+        packed_on="",
+        best_before="",
+        label_type="ingredients",
+        ingredients=ingredients_text,
+    ), None
+
+
 def _format_error() -> str:
     return (
         "❌ *Invalid format.* Use:\n\n"
@@ -113,5 +171,20 @@ def _format_error() -> str:
         "`PHALLI, 10`\n"
         "`TOOR DAL, 5, 2`\n"
         "`TOOR DAL, 5, 500`\n"
-        "`TOOR DAL, 5, 2 KGS`"
+        "`TOOR DAL, 5, 2 KGS`\n\n"
+        "*Ingredients sticker:*\n"
+        "`Refined wheat flour, Rice Flour ;; i`\n"
+        "`Refined wheat flour, Rice Flour ;; i 5`"
+    )
+
+
+def _ingredients_format_error() -> str:
+    return (
+        "❌ *Invalid ingredients format.* Use:\n\n"
+        "`Ingredients text ;; i`\n"
+        "or\n"
+        "`Ingredients text ;; i 5`\n\n"
+        "*Examples:*\n"
+        "`Refined wheat flour, Whole Wheat Flour ;; i`\n"
+        "`Refined wheat flour, Rice Flour ;; i 10`"
     )

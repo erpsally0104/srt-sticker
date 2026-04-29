@@ -1,6 +1,7 @@
 import win32print
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
+import textwrap
 from parser import PrintRequest
 
 PRINTER_NAME = "TSC TE244"
@@ -143,6 +144,48 @@ def build_label_image(req, batch_no):
     return img
 
 
+def build_ingredients_label_image(req):
+    """
+    Build a simple ingredients-only sticker.
+    Layout: "Ingredients : <text>" with word wrapping on the 50x38mm label.
+    """
+    img  = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
+    draw = ImageDraw.Draw(img)
+
+    font_title = get_font(FONT_ARIAL_BD, 26)
+    font_body  = get_font(FONT_ARIAL, 22)
+
+    PAD = 10
+    y   = PAD
+
+    # Draw "Ingredients :" header
+    title_text = "Ingredients :"
+    draw.text((PAD, y), title_text, font=font_title, fill="black")
+    title_bbox = draw.textbbox((0, 0), title_text, font=font_title)
+    y += (title_bbox[3] - title_bbox[1]) + 8
+
+    # Word-wrap the ingredients text to fit the label width
+    max_text_width = LABEL_W_PX - (PAD * 2)
+
+    # Calculate approximate chars per line based on font
+    avg_char_bbox = draw.textbbox((0, 0), "A", font=font_body)
+    avg_char_w = avg_char_bbox[2] - avg_char_bbox[0]
+    chars_per_line = max(10, max_text_width // avg_char_w)
+
+    wrapped_lines = textwrap.wrap(req.ingredients, width=chars_per_line)
+
+    line_h_bbox = draw.textbbox((0, 0), "Ag", font=font_body)
+    line_h = (line_h_bbox[3] - line_h_bbox[1]) + 4
+
+    for line in wrapped_lines:
+        if y + line_h > LABEL_H_PX - PAD:
+            break  # don't overflow the label
+        draw.text((PAD, y), line, font=font_body, fill="black")
+        y += line_h
+
+    return img
+
+
 def image_to_tspl_bitmap(img, quantity=1):
     img_mono    = img.convert("1")
     w, h        = img_mono.size
@@ -174,9 +217,12 @@ def image_to_tspl_bitmap(img, quantity=1):
     return header + bytes(pixel_data) + f"\r\nPRINT {quantity},1\r\n".encode("ascii")
 
 
-def print_label(req, batch_no: str) -> bool:
+def print_label(req, batch_no: str = "") -> bool:
     try:
-        img       = build_label_image(req, batch_no)
+        if req.label_type == "ingredients":
+            img = build_ingredients_label_image(req)
+        else:
+            img = build_label_image(req, batch_no)
         tspl_data = image_to_tspl_bitmap(img, req.quantity)
 
         hPrinter = win32print.OpenPrinter(PRINTER_NAME)
