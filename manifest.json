@@ -1,0 +1,24 @@
+{
+  "name": "SRI RADHE Label Printer",
+  "short_name": "SRT Labels",
+  "description": "Label printing system for Sri Radhe Traders",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f0e8",
+  "theme_color": "#FF6B00",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

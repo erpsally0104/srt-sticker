@@ -1,0 +1,9 @@
+python-telegram-bot==21.3
+pywin32
+python-dateutil
+Pillow
+qrcode
+flask
+flask-cors
+pyjwt
+bcrypt
