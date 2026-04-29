@@ -15,6 +15,7 @@ class PrintRequest:
     best_before: str
     label_type: str = "product"  # "product" or "ingredients"
     ingredients: str = ""        # raw ingredients text for ingredients labels
+    hotel: str = "general"       # hotel/client this product belongs to
 
 
 def normalize_weight(raw: str) -> str:
@@ -51,16 +52,17 @@ def normalize_weight(raw: str) -> str:
         return raw
 
 
-def parse_message(text: str) -> Tuple[Optional[PrintRequest], Optional[str]]:
+def parse_message(text: str, hotel: str = "general") -> Tuple[Optional[PrintRequest], Optional[str]]:
     """
     Parses a print request message.
 
     Accepted formats:
-        phalli, 10              → product uppercased, weight from product list
-        PHALLI, 10, 2           → weight auto → "2 KGS"
-        PHALLI, 10, 500         → weight auto → "500 GMS"
-        PHALLI, 10, 2 KGS       → weight kept as "2 KGS"
-        PHALLI, 10, 500 GMS     → weight kept as "500 GMS"
+        phalli, 10                      → product uppercased, weight from product list
+        PHALLI, 10, 2                   → weight auto → "2 KGS"
+        PHALLI, 10, 500                 → weight auto → "500 GMS"
+        PHALLI, 10, 2 KGS              → weight kept as "2 KGS"
+        PHALLI, 10, 500 GMS            → weight kept as "500 GMS"
+        PHALLI, 10, 2 KGS, hotelname   → 4th param = hotel
 
     Ingredients-only format:
         Refined wheat flour, Whole Wheat Flour ;; i
@@ -75,7 +77,7 @@ def parse_message(text: str) -> Tuple[Optional[PrintRequest], Optional[str]]:
 
     parts = [p.strip() for p in text.split(',')]
 
-    if len(parts) < 2 or len(parts) > 3:
+    if len(parts) < 2 or len(parts) > 4:
         return None, _format_error()
 
     # 1. Product — always uppercase
@@ -93,11 +95,16 @@ def parse_message(text: str) -> Tuple[Optional[PrintRequest], Optional[str]]:
     except ValueError:
         return None, "⚠️ Quantity must be a valid number.\n\n" + _format_error()
 
-    # 3. Weight
-    if len(parts) == 3:
+    # 3. Weight (optional 3rd param)
+    # 4. Hotel (optional 4th param, or from function arg)
+    req_hotel = hotel
+    if len(parts) == 4:
+        req_hotel = parts[3].strip().lower() or hotel
+        weight = normalize_weight(parts[2])
+    elif len(parts) == 3:
         weight = normalize_weight(parts[2])
     else:
-        weight = get_weight(product)  # lookup from products.json
+        weight = get_weight(product, req_hotel)
 
     # 4. Auto dates
     today       = datetime.now()
@@ -111,6 +118,7 @@ def parse_message(text: str) -> Tuple[Optional[PrintRequest], Optional[str]]:
         quantity=quantity,
         packed_on=packed_on,
         best_before=best_before_str,
+        hotel=req_hotel,
     ), None
 
 
@@ -165,13 +173,13 @@ def _format_error() -> str:
     return (
         "❌ *Invalid format.* Use:\n\n"
         "`Product, Quantity`\n"
-        "or\n"
-        "`Product, Quantity, Weight`\n\n"
+        "`Product, Quantity, Weight`\n"
+        "`Product, Quantity, Weight, Hotel`\n\n"
         "*Examples:*\n"
         "`PHALLI, 10`\n"
         "`TOOR DAL, 5, 2`\n"
-        "`TOOR DAL, 5, 500`\n"
-        "`TOOR DAL, 5, 2 KGS`\n\n"
+        "`TOOR DAL, 5, 2 KGS`\n"
+        "`TOOR DAL, 5, 2 KGS, taj`\n\n"
         "*Ingredients sticker:*\n"
         "`Refined wheat flour, Rice Flour ;; i`\n"
         "`Refined wheat flour, Rice Flour ;; i 5`"

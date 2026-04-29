@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 
 from user_manager import is_admin, is_authorized, add_user, remove_user, list_users
-from product_manager import add_product, remove_product, list_products
+from product_manager import add_product, remove_product, list_products, list_hotels
 from batch_manager import get_next_batch_number
 from parser import parse_message
 from printer import print_label, get_printer_status
@@ -52,15 +52,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 *SRI RADHE Label Bot*\n\n"
         "Send a message in this format to print stickers:\n\n"
         "`Product, Quantity`\n"
-        "or\n"
-        "`Product, Quantity, Weight`\n\n"
+        "`Product, Quantity, Weight`\n"
+        "`Product, Quantity, Weight, Hotel`\n\n"
         "*Ingredients sticker:*\n"
         "`Ingredients text ;; i`\n"
         "`Ingredients text ;; i 5`\n\n"
         "*Examples:*\n"
         "`PHALLI, 10`\n"
         "`TOOR DAL, 5, 1 KG`\n"
+        "`TOOR DAL, 5, 1 KG, taj`\n"
         "`Refined wheat flour, Rice Flour ;; i`\n\n"
+        "Hotel defaults to *general* if not specified.\n"
         "Use /help to see all commands.",
         parse_mode="Markdown"
     )
@@ -78,13 +80,16 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📋 *Commands:*\n\n"
         "*Print a label:*\n"
         "`Product, Quantity`\n"
-        "`Product, Quantity, Weight`\n\n"
+        "`Product, Quantity, Weight`\n"
+        "`Product, Quantity, Weight, Hotel`\n\n"
+        "_Hotel is optional — defaults to general._\n\n"
         "*Ingredients sticker:*\n"
         "`Ingredients text ;; i`\n"
         "`Ingredients text ;; i 5`\n\n"
         "*General:*\n"
         "/status — Check printer status\n"
-        "/listproducts — Show all products & default weights\n"
+        "/listproducts — Show all hotels\n"
+        "/listproducts general — Show products for a hotel\n"
         "/help — Show this message\n"
     )
 
@@ -94,8 +99,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/adduser @username — Authorize a user\n"
             "/removeuser @username — Remove a user\n"
             "/listusers — Show all authorized users\n"
-            "/addproduct PRODUCT WEIGHT — Add/update product\n"
-            "/removeproduct PRODUCT — Remove product\n"
+            "/addproduct PRODUCT WEIGHT — Add to general\n"
+            "/addproduct PRODUCT WEIGHT HOTEL — Add to hotel\n"
+            "/removeproduct PRODUCT — Remove from general\n"
+            "/removeproduct PRODUCT HOTEL — Remove from hotel\n"
         )
 
     await update.message.reply_text(msg, parse_mode="Markdown")
@@ -152,58 +159,121 @@ async def cmd_listusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────────
-# /addproduct PRODUCT WEIGHT  (admin only)
+# /addproduct PRODUCT WEIGHT [HOTEL]  (admin only)
 # Example: /addproduct MANGO 1 KG
+# Example: /addproduct MANGO 1 KG taj
 # ─────────────────────────────────────────────────────────
 async def cmd_addproduct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_admin(update):
         await update.message.reply_text("⛔ Only the admin can do this.")
         return
     if len(context.args) < 2:
-        await update.message.reply_text("Usage: /addproduct PRODUCT WEIGHT\nExample: /addproduct MANGO 1 KG")
+        await update.message.reply_text(
+            "Usage:\n"
+            "/addproduct PRODUCT WEIGHT\n"
+            "/addproduct PRODUCT WEIGHT HOTEL\n\n"
+            "Example:\n"
+            "/addproduct MANGO 1 KG\n"
+            "/addproduct MANGO 1 KG taj"
+        )
         return
-    # Last arg is weight unit (KG/GMS), second-to-last is number, rest is product name
-    # e.g. /addproduct G. UDAD DAL 2 KGS → args = ['G.', 'UDAD', 'DAL', '2', 'KGS']
-    # Weight = last 2 tokens, product = everything before
+
     args = context.args
-    weight = " ".join(args[-2:])
-    product = " ".join(args[:-2])
+
+    # Check if last arg is a known hotel or looks like a hotel name
+    # Hotels are single lowercase words that are NOT weight units
+    weight_units = {"KG", "KGS", "GM", "GMS", "GRAMS", "GRAM", "G"}
+    last_arg_upper = args[-1].upper()
+
+    # Detect hotel: if last arg is not a weight unit and not a number,
+    # treat it as hotel name
+    hotel = "general"
+    weight_end_idx = len(args)
+
+    if last_arg_upper not in weight_units:
+        try:
+            float(args[-1])
+            # It's a number, not a hotel
+        except ValueError:
+            # Not a number and not a weight unit — could be hotel
+            # But only if there are enough args for product + weight before it
+            if len(args) >= 4:
+                hotel = args[-1].lower()
+                weight_end_idx = len(args) - 1
+
+    # Weight = last 2 tokens before hotel, product = everything before weight
+    weight_args = args[weight_end_idx - 2 : weight_end_idx]
+    weight = " ".join(weight_args)
+    product = " ".join(args[: weight_end_idx - 2])
+
     if not product:
-        await update.message.reply_text("Usage: /addproduct PRODUCT WEIGHT\nExample: /addproduct MANGO 1 KG")
+        await update.message.reply_text(
+            "Usage:\n"
+            "/addproduct PRODUCT WEIGHT\n"
+            "/addproduct PRODUCT WEIGHT HOTEL\n\n"
+            "Example:\n"
+            "/addproduct MANGO 1 KG\n"
+            "/addproduct MANGO 1 KG taj"
+        )
         return
-    result = add_product(product, weight)
+
+    result = add_product(product, weight, hotel)
     await update.message.reply_text(result, parse_mode="Markdown")
 
 
 # ─────────────────────────────────────────────────────────
-# /removeproduct PRODUCT  (admin only)
+# /removeproduct PRODUCT [HOTEL]  (admin only)
 # ─────────────────────────────────────────────────────────
 async def cmd_removeproduct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_admin(update):
         await update.message.reply_text("⛔ Only the admin can do this.")
         return
     if not context.args:
-        await update.message.reply_text("Usage: /removeproduct PRODUCT")
+        await update.message.reply_text(
+            "Usage:\n"
+            "/removeproduct PRODUCT\n"
+            "/removeproduct PRODUCT HOTEL\n\n"
+            "Example:\n"
+            "/removeproduct MANGO\n"
+            "/removeproduct MANGO taj"
+        )
         return
-    product = " ".join(context.args)
-    result = remove_product(product)
+
+    args = context.args
+    hotels = list_hotels()
+
+    # If last arg matches a known hotel name, use it
+    hotel = "general"
+    if len(args) >= 2 and args[-1].lower() in hotels:
+        hotel = args[-1].lower()
+        product = " ".join(args[:-1])
+    else:
+        product = " ".join(args)
+
+    result = remove_product(product, hotel)
     await update.message.reply_text(result, parse_mode="Markdown")
 
 
 # ─────────────────────────────────────────────────────────
-# /listproducts
+# /listproducts [HOTEL]
 # ─────────────────────────────────────────────────────────
 async def cmd_listproducts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_auth(update):
         await update.message.reply_text("⛔ You are not authorized.")
         return
-    result = list_products()
+
+    hotel = None
+    if context.args:
+        hotel = context.args[0].lower()
+
+    result = list_products(hotel)
     await update.message.reply_text(result, parse_mode="Markdown")
 
 
 # ─────────────────────────────────────────────────────────
 # Handle all non-command messages → print requests
 # Supports single line and multi-line batch input
+# The 4th comma-separated param is hotel (optional, defaults to general)
 # ─────────────────────────────────────────────────────────
 async def handle_print_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_auth(update):
@@ -251,8 +321,9 @@ async def handle_print_request(update: Update, context: ContextTypes.DEFAULT_TYP
             batch_no = get_next_batch_number()
             success  = print_label(req, batch_no)
             if success:
+                hotel_tag = f" [{req.hotel}]" if req.hotel != "general" else ""
                 success_lines.append(
-                    f"✅ *{req.product}* — {req.quantity} sticker(s) | {req.weight} | Batch: {batch_no}"
+                    f"✅ *{req.product}*{hotel_tag} — {req.quantity} sticker(s) | {req.weight} | Batch: {batch_no}"
                 )
                 log_print(
                     username    = get_username(update),
@@ -278,10 +349,12 @@ async def handle_print_request(update: Update, context: ContextTypes.DEFAULT_TYP
             )
         else:
             batch_no = success_lines[0].split("Batch: ")[1]
+            hotel_line = f"🏨 Hotel      : {req.hotel}\n" if req.hotel != "general" else ""
             await update.message.reply_text(
                 f"✅ *Printing {req.quantity} sticker(s)*\n\n"
                 f"📦 Product    : {req.product}\n"
                 f"⚖️ Weight     : {req.weight}\n"
+                f"{hotel_line}"
                 f"📅 Packed On  : {req.packed_on}\n"
                 f"📅 Best Before: {req.best_before}\n"
                 f"🔖 Batch No   : {batch_no}",

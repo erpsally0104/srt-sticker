@@ -7,7 +7,10 @@ from logger import log_print, get_logs, get_all_usernames
 from parser import parse_message
 from printer import print_label, get_printer_status
 from batch_manager import get_next_batch_number
-from product_manager import add_product, remove_product, _load as load_products
+from product_manager import (
+    add_product, remove_product, list_hotels,
+    get_hotel_products, _load as load_products
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -101,16 +104,29 @@ def status():
 @app.route("/api/products", methods=["GET"])
 @require_auth
 def get_products():
-    data     = load_products()
-    products = [{"name": k, "weight": v} for k, v in data.items()]
-    return jsonify({"products": products})
+    hotel = request.args.get("hotel", "").strip().lower()
+    hotels = list_hotels()
+
+    if hotel:
+        # Return products for a specific hotel
+        prods = get_hotel_products(hotel)
+        products = [{"name": k, "weight": v} for k, v in prods.items()]
+        return jsonify({"products": products, "hotels": hotels, "current_hotel": hotel})
+    else:
+        # Return all hotels with their products
+        all_data = load_products()
+        by_hotel = {}
+        for h, prods in all_data.items():
+            by_hotel[h] = [{"name": k, "weight": v} for k, v in prods.items()]
+        return jsonify({"by_hotel": by_hotel, "hotels": hotels})
 
 
 @app.route("/api/print", methods=["POST"])
 @require_auth
 def print_labels():
-    body = request.get_json()
-    jobs = body.get("jobs", [])
+    body  = request.get_json()
+    jobs  = body.get("jobs", [])
+    hotel = (body.get("hotel") or "general").strip().lower()
     if not jobs:
         return jsonify({"error": "No jobs provided"}), 400
 
@@ -121,7 +137,7 @@ def print_labels():
         line = job.get("line", "").strip()
         if not line:
             continue
-        req, error = parse_message(line)
+        req, error = parse_message(line, hotel=hotel)
         if error:
             results.append({"line": line, "success": False, "error": error})
             continue
@@ -162,9 +178,10 @@ def api_add_product():
     body    = request.get_json()
     product = body.get("product", "").strip().upper()
     weight  = body.get("weight", "").strip().upper()
+    hotel   = (body.get("hotel") or "general").strip().lower()
     if not product or not weight:
         return jsonify({"error": "Product and weight required"}), 400
-    result = add_product(product, weight)
+    result = add_product(product, weight, hotel)
     return jsonify({"message": result})
 
 
@@ -173,9 +190,10 @@ def api_add_product():
 def api_remove_product():
     body    = request.get_json()
     product = body.get("product", "").strip().upper()
+    hotel   = (body.get("hotel") or "general").strip().lower()
     if not product:
         return jsonify({"error": "Product required"}), 400
-    result = remove_product(product)
+    result = remove_product(product, hotel)
     return jsonify({"message": result})
 
 

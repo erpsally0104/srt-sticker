@@ -473,13 +473,23 @@ header {
     <div class="tab-page active" id="tab-print">
       <div class="section-title">Print Labels</div>
 
-      <!-- Sticker type selector -->
+      <!-- Sticker type + hotel selector -->
       <div class="card" style="margin-bottom:0.75rem; padding:0.75rem 1rem;">
-        <label class="form-label" style="margin-bottom:8px;">Sticker Type</label>
-        <select id="stickerType" onchange="onStickerTypeChange()">
-          <option value="product" selected>🏷️ Product Label</option>
-          <option value="ingredients">📝 Ingredients Label</option>
-        </select>
+        <div style="display:flex; gap:8px;">
+          <div style="flex:1;">
+            <label class="form-label" style="margin-bottom:8px;">Sticker Type</label>
+            <select id="stickerType" onchange="onStickerTypeChange()">
+              <option value="product" selected>🏷️ Product Label</option>
+              <option value="ingredients">📝 Ingredients Label</option>
+            </select>
+          </div>
+          <div style="flex:1;" id="printHotelWrap">
+            <label class="form-label" style="margin-bottom:8px;">Hotel</label>
+            <select id="printHotel" onchange="onPrintHotelChange()">
+              <option value="general" selected>General</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <!-- Product label UI -->
@@ -518,6 +528,12 @@ header {
     <!-- ── Tab: Products ── -->
     <div class="tab-page" id="tab-products">
       <div class="section-title">Product List</div>
+      <div class="card" style="margin-bottom:0.75rem; padding:0.75rem 1rem;">
+        <label class="form-label" style="margin-bottom:8px;">Hotel</label>
+        <select id="productsHotel" onchange="onProductsHotelChange()">
+          <option value="general" selected>General</option>
+        </select>
+      </div>
       <div class="card">
         <div class="product-list" id="productList"></div>
         <div style="border-top:2px dashed #ddd; padding-top:0.75rem; margin-top:0.5rem;">
@@ -693,7 +709,9 @@ async function checkStatus() {
 
 // ── Job rows ─────────────────────────────────
 let rowId = 0;
-let products = [];
+let products = [];       // current hotel's products for combo dropdown
+let allByHotel = {};     // { hotel: [{name, weight}, ...] }
+let hotels = [];         // ['general', ...]
 
 function getUOM(val) {
   const n = parseFloat(val);
@@ -798,8 +816,9 @@ async function addNewProduct(id) {
   const wtRaw = (document.getElementById(`wt-${id}`)?.value||'').trim();
   const wtNum = parseFloat(wtRaw);
   let weight  = !isNaN(wtNum) ? (wtNum<100?`${wtNum} KGS`:`${wtNum} GMS`) : '500 GMS';
+  const hotel = document.getElementById('printHotel')?.value || 'general';
   try {
-    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight})});
+    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
     await loadProducts();
     document.getElementById(`wt-${id}`).value = parseFloat(weight);
     updateUOM(id);
@@ -837,8 +856,9 @@ async function submitPrint() {
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
 
+  const hotel = document.getElementById('printHotel')?.value || 'general';
   try {
-    const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs})});
+    const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs, hotel})});
     if (!res) return;
     const data = await res.json();
     showResults(data.results);
@@ -880,6 +900,28 @@ function resetAll() {
 }
 
 // ── Products ─────────────────────────────────
+function getSelectedPrintHotel() {
+  return document.getElementById('printHotel')?.value || 'general';
+}
+function getSelectedProductsHotel() {
+  return document.getElementById('productsHotel')?.value || 'general';
+}
+
+function populateHotelDropdowns() {
+  const printSel    = document.getElementById('printHotel');
+  const productsSel = document.getElementById('productsHotel');
+  const curPrint    = printSel?.value || 'general';
+  const curProducts = productsSel?.value || 'general';
+
+  const opts = hotels.map(h => {
+    const label = h.charAt(0).toUpperCase() + h.slice(1);
+    return `<option value="${h}">${label}</option>`;
+  }).join('');
+
+  if (printSel)    { printSel.innerHTML = opts;    printSel.value = hotels.includes(curPrint) ? curPrint : 'general'; }
+  if (productsSel) { productsSel.innerHTML = opts;  productsSel.value = hotels.includes(curProducts) ? curProducts : 'general'; }
+}
+
 async function loadProducts() {
   const list = document.getElementById('productList');
   try {
@@ -889,32 +931,55 @@ async function loadProducts() {
       return;
     }
     const data = await res.json();
-    products   = data.products;
+    allByHotel = data.by_hotel || {};
+    hotels     = data.hotels || Object.keys(allByHotel);
+    if (!hotels.includes('general')) hotels.unshift('general');
+
+    populateHotelDropdowns();
+
+    // Set products for print combo dropdown based on selected print hotel
+    products = allByHotel[getSelectedPrintHotel()] || [];
     renderProducts();
   } catch {
     if (list) list.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">⚠️ Cannot load products — is server.py running?</div>';
   }
 }
 
+function onPrintHotelChange() {
+  products = allByHotel[getSelectedPrintHotel()] || [];
+  // Re-render all open combo dropdowns
+  document.querySelectorAll('.job-card').forEach(row => {
+    const id = row.id.replace('row-','');
+    onProductSelect(id);
+  });
+}
+
+function onProductsHotelChange() {
+  renderProducts();
+}
+
 function renderProducts() {
   const list = document.getElementById('productList');
   if (!list) return;
-  list.innerHTML = products.length ? products.map(p=>`
+  const hotel = getSelectedProductsHotel();
+  const hotelProducts = allByHotel[hotel] || [];
+  list.innerHTML = hotelProducts.length ? hotelProducts.map(p=>`
     <div class="product-item">
       <div>
         <div class="product-item-name">${p.name}</div>
         <div class="product-item-weight">${p.weight}</div>
       </div>
-      <button class="product-item-remove" onclick="removeProduct('${p.name}')">×</button>
-    </div>`).join('') : '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">No products yet.</div>';
+      <button class="product-item-remove" onclick="removeProduct('${p.name.replace(/'/g,"\\'")}')">×</button>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">No products in this hotel.</div>';
 }
 
 async function addProductHandler() {
   const name   = document.getElementById('newProduct').value.trim().toUpperCase();
   const weight = document.getElementById('newWeight').value.trim().toUpperCase();
+  const hotel  = getSelectedProductsHotel();
   if (!name||!weight) { showToast('Enter name and weight'); return; }
   try {
-    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight})});
+    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
     document.getElementById('newProduct').value='';
     document.getElementById('newWeight').value='';
     await loadProducts(); showToast(`✅ Added ${name}`);
@@ -922,9 +987,10 @@ async function addProductHandler() {
 }
 
 async function removeProduct(name) {
-  if (!confirm(`Remove ${name}?`)) return;
+  const hotel = getSelectedProductsHotel();
+  if (!confirm(`Remove ${name} from [${hotel}]?`)) return;
   try {
-    await apiFetch(`${API}/products/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name})});
+    await apiFetch(`${API}/products/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,hotel})});
     await loadProducts(); showToast(`Removed ${name}`);
   } catch { showToast('Failed'); }
 }
@@ -972,6 +1038,7 @@ function onStickerTypeChange() {
   const type = document.getElementById('stickerType').value;
   document.getElementById('productSection').style.display     = type === 'product'     ? 'block' : 'none';
   document.getElementById('ingredientsSection').style.display  = type === 'ingredients' ? 'block' : 'none';
+  document.getElementById('printHotelWrap').style.display      = type === 'product'     ? 'block' : 'none';
   document.getElementById('results').innerHTML = '';
 }
 
