@@ -96,11 +96,11 @@ select {
   -webkit-appearance: none;
   appearance: none;
 }
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
   border-color: var(--saffron);
   background: #fff;
 }
-input.error { border-color: var(--red); background: var(--red-light); }
+input.error, textarea.error { border-color: var(--red); background: var(--red-light); }
 
 /* ── Buttons ────────────────────────────────── */
 .btn-primary {
@@ -472,7 +472,18 @@ header {
     <!-- ── Tab: Print ── -->
     <div class="tab-page active" id="tab-print">
       <div class="section-title">Print Labels</div>
-      <div class="card">
+
+      <!-- Sticker type selector -->
+      <div class="card" style="margin-bottom:0.75rem; padding:0.75rem 1rem;">
+        <label class="form-label" style="margin-bottom:8px;">Sticker Type</label>
+        <select id="stickerType" onchange="onStickerTypeChange()">
+          <option value="product" selected>🏷️ Product Label</option>
+          <option value="ingredients">📝 Ingredients Label</option>
+        </select>
+      </div>
+
+      <!-- Product label UI -->
+      <div class="card" id="productSection">
         <div id="jobRows"></div>
         <button class="btn-add-row" onclick="addRow()">+ Add item</button>
         <button class="btn-primary" id="printBtn" onclick="submitPrint()" style="margin-top:1rem;">
@@ -480,6 +491,27 @@ header {
         </button>
         <button class="btn-secondary" onclick="resetAll()">↺ RESET</button>
       </div>
+
+      <!-- Ingredients label UI -->
+      <div class="card" id="ingredientsSection" style="display:none;">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+          Ingredients Text
+        </div>
+        <textarea id="ingredientsText" rows="6" placeholder="e.g. Refined Wheat Flour, Rice Flour, Salt, Turmeric Powder, Chilli Powder..."
+          style="width:100%; border:2px solid var(--border); padding:10px 12px;
+          font-family:'DM Sans',sans-serif; font-size:16px; background:var(--paper);
+          color:var(--ink); outline:none; border-radius:0; resize:vertical;
+          -webkit-appearance:none; appearance:none;"></textarea>
+        <div class="form-group" style="margin-top:0.75rem; margin-bottom:0;">
+          <label class="form-label">Quantity</label>
+          <input type="number" id="ingredientsQty" placeholder="Number of stickers" min="1" max="500" value="1"/>
+        </div>
+        <button class="btn-primary" id="ingredientsPrintBtn" onclick="submitIngredientsPrint()" style="margin-top:1rem;">
+          <span id="ingredientsPrintBtnContent">🖨️ PRINT INGREDIENTS</span>
+        </button>
+        <button class="btn-secondary" onclick="resetIngredients()">↺ RESET</button>
+      </div>
+
       <div id="results"></div>
     </div>
 
@@ -933,6 +965,89 @@ async function loadLogs() {
         </div>
       </div>`).join('');
   } catch { c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">Failed to load.</div>'; }
+}
+
+// ── Sticker type toggle ──────────────────────
+function onStickerTypeChange() {
+  const type = document.getElementById('stickerType').value;
+  document.getElementById('productSection').style.display     = type === 'product'     ? 'block' : 'none';
+  document.getElementById('ingredientsSection').style.display  = type === 'ingredients' ? 'block' : 'none';
+  document.getElementById('results').innerHTML = '';
+}
+
+// ── Ingredients print ────────────────────────
+async function submitIngredientsPrint() {
+  const btn     = document.getElementById('ingredientsPrintBtn');
+  const content = document.getElementById('ingredientsPrintBtnContent');
+  const text    = (document.getElementById('ingredientsText')?.value || '').trim();
+  const qtyVal  = (document.getElementById('ingredientsQty')?.value || '').trim();
+
+  document.getElementById('ingredientsText')?.classList.remove('error');
+  document.getElementById('ingredientsQty')?.classList.remove('error');
+
+  if (!text) {
+    document.getElementById('ingredientsText')?.classList.add('error');
+    showToast('Enter ingredients text');
+    return;
+  }
+  const qty = parseInt(qtyVal) || 0;
+  if (qty < 1 || qty > 500) {
+    document.getElementById('ingredientsQty')?.classList.add('error');
+    showToast('Quantity must be 1–500');
+    return;
+  }
+
+  btn.disabled = true;
+  content.innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const res = await apiFetch(`${API}/print`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        jobs: [{ line: `${text} ;; i ${qty}` }]
+      })
+    });
+    if (!res) return;
+    const data = await res.json();
+    showIngredientsResults(data.results);
+  } catch { showToast('❌ Cannot reach server'); }
+  finally { btn.disabled = false; content.innerHTML = '🖨️ PRINT INGREDIENTS'; }
+}
+
+function showIngredientsResults(results) {
+  const c = document.getElementById('results');
+  c.innerHTML = '';
+  results.forEach(r => {
+    const d = document.createElement('div');
+    d.className = `result-item ${r.success ? 'success' : 'fail'}`;
+    if (r.success) {
+      d.innerHTML = `
+        <div class="result-icon">✅</div>
+        <div>
+          <div class="result-product">Ingredients × ${r.quantity}</div>
+          <div class="result-detail">Ingredients sticker printed successfully</div>
+        </div>`;
+    } else {
+      d.innerHTML = `
+        <div class="result-icon">❌</div>
+        <div>
+          <div class="result-product">Ingredients</div>
+          <div class="result-detail" style="color:var(--red)">${r.error || 'Failed'}</div>
+        </div>`;
+    }
+    c.appendChild(d);
+  });
+  if (results.length) c.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function resetIngredients() {
+  document.getElementById('ingredientsText').value = '';
+  document.getElementById('ingredientsQty').value  = '1';
+  document.getElementById('results').innerHTML     = '';
+  document.getElementById('ingredientsText')?.classList.remove('error');
+  document.getElementById('ingredientsQty')?.classList.remove('error');
+  showToast('Cleared');
 }
 
 // ── Toast ─────────────────────────────────────
