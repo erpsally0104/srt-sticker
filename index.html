@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SRI RADHE — Label Printer</title>
+<meta name="theme-color" content="#FF6B00">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SRT Labels">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0d0d0d;
+  --paper: #f5f0e8;
+  --saffron: #FF6B00;
+  --saffron-dark: #cc5500;
+  --green: #1a7a4a;
+  --green-light: #e8f5ee;
+  --red: #c0392b;
+  --red-light: #fdecea;
+  --border: #0d0d0d;
+  --card: #ffffff;
+  --muted: #666;
+  --radius: 0px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  font-size: 16px;
+}
+
+/* ── Login ──────────────────────────────────── */
+#loginScreen {
+  display: none;
+  position: fixed; inset: 0; z-index: 999;
+  background: var(--saffron);
+  align-items: center; justify-content: center;
+  flex-direction: column;
+  padding: 1.5rem;
+}
+
+.login-box {
+  background: #fff;
+  border: 3px solid var(--border);
+  box-shadow: 6px 6px 0 rgba(0,0,0,0.3);
+  padding: 2rem 1.5rem;
+  width: 100%; max-width: 380px;
+}
+
+.login-logo {
+  font-family: 'Black Han Sans', sans-serif;
+  font-size: 1.6rem;
+  color: var(--saffron);
+  text-align: center;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.login-sub {
+  text-align: center; font-size: 0.7rem;
+  letter-spacing: 3px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 1.75rem;
+}
+
+.form-label {
+  font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 1px; text-transform: uppercase;
+  display: block; margin-bottom: 6px;
+}
+.form-group { margin-bottom: 1rem; }
+
+/* ── Base inputs ────────────────────────────── */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="date"],
+select {
+  width: 100%;
+  border: 2px solid var(--border);
+  padding: 10px 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px; /* prevents iOS zoom */
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--saffron);
+  background: #fff;
+}
+input.error, textarea.error { border-color: var(--red); background: var(--red-light); }
+
+/* ── Buttons ────────────────────────────────── */
+.btn-primary {
+  width: 100%; padding: 0.9rem;
+  background: var(--saffron); color: #fff;
+  border: 3px solid var(--border);
+  font-family: 'Black Han Sans', sans-serif;
+  font-size: 1.2rem; letter-spacing: 2px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 var(--ink);
+  transition: all 0.1s;
+  touch-action: manipulation;
+}
+.btn-primary:active { transform: translate(2px,2px); box-shadow: 2px 2px 0 var(--ink); }
+
+.btn-secondary {
+  width: 100%; padding: 0.75rem;
+  background: #fff; color: var(--ink);
+  border: 3px solid var(--border);
+  font-family: 'Black Han Sans', sans-serif;
+  font-size: 1rem; letter-spacing: 2px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 var(--ink);
+  transition: all 0.1s;
+  touch-action: manipulation;
+  margin-top: 0.5rem;
+}
+.btn-secondary:active { transform: translate(2px,2px); box-shadow: 2px 2px 0 var(--ink); }
+
+.btn-small {
+  padding: 8px 14px;
+  background: var(--green); color: #fff;
+  border: 2px solid var(--border);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600; font-size: 0.88rem;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--ink);
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+.btn-small:active { transform: translate(1px,1px); box-shadow: 2px 2px 0 var(--ink); }
+
+.btn-icon {
+  width: 40px; height: 40px; flex-shrink: 0;
+  border: 2px solid #ddd;
+  background: #fff; color: #999;
+  font-size: 1.2rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.btn-icon:active { background: var(--red-light); border-color: var(--red); color: var(--red); }
+
+/* ── Layout ─────────────────────────────────── */
+#mainApp { display: none; }
+
+header {
+  background: var(--saffron);
+  border-bottom: 3px solid var(--border);
+  padding: 1rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  position: sticky; top: 0; z-index: 100;
+}
+
+.brand-name {
+  font-family: 'Black Han Sans', sans-serif;
+  font-size: 1.1rem; color: #fff;
+  line-height: 1; letter-spacing: 0.5px;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.15);
+}
+.brand-sub {
+  font-size: 0.62rem; color: rgba(255,255,255,0.8);
+  text-transform: uppercase; letter-spacing: 2px; margin-top: 2px;
+}
+
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(0,0,0,0.2);
+  border: 1.5px solid rgba(255,255,255,0.3);
+  padding: 6px 10px; cursor: pointer;
+  font-size: 0.75rem; color: #fff; font-weight: 500;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #aaa; flex-shrink: 0;
+}
+.status-dot.online { background: #4ade80; box-shadow: 0 0 5px #4ade80; }
+.status-dot.offline { background: #f87171; }
+
+.page { padding: 1rem; max-width: 600px; margin: 0 auto; padding-bottom: 5rem; }
+
+/* ── Section title ──────────────────────────── */
+.section-title {
+  font-family: 'Black Han Sans', sans-serif;
+  font-size: 0.9rem; letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 1.25rem 0 0.75rem;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-title::after { content: ''; flex: 1; height: 2px; background: var(--ink); }
+
+/* ── Card ───────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 2.5px solid var(--border);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+/* ── Job rows — MOBILE FIRST ────────────────── */
+.job-card {
+  background: var(--paper);
+  border: 2px solid #ddd;
+  padding: 0.75rem;
+  margin-bottom: 0.6rem;
+  position: relative;
+}
+.job-card-header {
+  display: flex; gap: 8px; align-items: flex-start; margin-bottom: 0.5rem;
+}
+.job-card-remove {
+  position: absolute; top: 8px; right: 8px;
+  width: 32px; height: 32px;
+  border: 1.5px solid #ddd; background: #fff;
+  color: #bbb; font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.job-card-remove:active { border-color: var(--red); color: var(--red); background: var(--red-light); }
+
+.job-row-fields {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+  gap: 8px;
+}
+
+.uom-badge {
+  display: flex; align-items: center; justify-content: center;
+  height: 42px;
+  font-size: 0.8rem; font-weight: 700;
+  letter-spacing: 1px; border: 2px solid #ddd;
+  background: #f5f5f5; color: #aaa;
+}
+.uom-badge.kgs { background: #e8f5ee; border-color: var(--green); color: var(--green); }
+.uom-badge.gms { background: #fff8f0; border-color: var(--saffron); color: var(--saffron-dark); }
+
+/* ── Combo dropdown ─────────────────────────── */
+.combo-wrap { position: relative; }
+.combo-dropdown {
+  display: none; position: absolute;
+  top: 100%; left: 0; right: 0;
+  background: #fff;
+  border: 2px solid var(--border); border-top: none;
+  max-height: 200px; overflow-y: auto;
+  z-index: 200;
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.15);
+}
+.combo-dropdown.open { display: block; }
+.combo-option {
+  padding: 12px 12px;
+  font-size: 0.9rem; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #f0f0f0;
+  touch-action: manipulation;
+}
+.combo-option:active { background: #fff8f0; }
+.combo-option-weight { font-size: 0.75rem; color: var(--muted); }
+.combo-new {
+  padding: 12px; font-size: 0.88rem;
+  color: var(--green); font-weight: 600; cursor: pointer;
+  background: var(--green-light);
+  border-top: 1.5px dashed #aaa;
+  touch-action: manipulation;
+}
+.combo-new:active { background: #c8e6d4; }
+
+/* ── Results ────────────────────────────────── */
+.result-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border: 2px solid var(--border);
+  font-size: 0.88rem; margin-bottom: 6px;
+}
+.result-item.success { background: var(--green-light); border-color: var(--green); }
+.result-item.fail    { background: var(--red-light);   border-color: var(--red);   }
+.result-icon { font-size: 1rem; flex-shrink: 0; margin-top: 2px; }
+.result-product { font-weight: 600; font-size: 0.9rem; }
+.result-detail { color: var(--muted); font-size: 0.78rem; margin-top: 3px; line-height: 1.5; }
+.result-batch { font-family: monospace; background: rgba(0,0,0,0.07); padding: 1px 5px; }
+
+/* ── Products ───────────────────────────────── */
+.product-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1rem; }
+.product-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border: 2px solid #ddd; background: var(--paper);
+}
+.product-item-name { font-weight: 600; font-size: 0.9rem; }
+.product-item-weight { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+.product-item-actions {
+  display: flex; gap: 4px; flex-shrink: 0;
+}
+.product-item-edit {
+  width: 32px; height: 32px; flex-shrink: 0;
+  border: 1.5px solid #ddd; background: #fff;
+  color: #bbb; font-size: 0.85rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.product-item-edit:active { border-color: var(--saffron); color: var(--saffron); }
+.product-item-remove {
+  width: 32px; height: 32px; flex-shrink: 0;
+  border: 1.5px solid #ddd; background: #fff;
+  color: #bbb; font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.product-item-remove:active { border-color: var(--red); color: var(--red); }
+.product-edit-row {
+  display: flex; gap: 6px; align-items: center;
+  padding: 8px 10px; border: 2px solid var(--saffron); background: #fff;
+}
+.product-edit-row input {
+  flex: 1; min-width: 0; padding: 6px 8px; font-size: 14px;
+}
+.product-edit-row .btn-small { padding: 6px 10px; font-size: 0.78rem; }
+.product-edit-cancel {
+  padding: 6px 10px; font-size: 0.78rem;
+  background: #fff; color: var(--muted); border: 2px solid #ddd;
+  font-family: 'DM Sans', sans-serif; font-weight: 600;
+  cursor: pointer; touch-action: manipulation;
+}
+
+.add-product-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.add-product-row input { flex: 1; min-width: 120px; }
+
+/* ── Collapsible ────────────────────────────── */
+.collapsible-toggle {
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 600; font-size: 0.9rem;
+  touch-action: manipulation;
+}
+.collapsible-toggle .arrow { transition: transform 0.2s; font-size: 0.75rem; }
+.collapsible-toggle.open .arrow { transform: rotate(90deg); }
+.collapsible-body { display: none; margin-top: 0.75rem; }
+.collapsible-body.open { display: block; }
+
+/* ── Logs ───────────────────────────────────── */
+.log-entry {
+  border: 2px solid #e5e5e5;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: #fff;
+}
+.log-entry-top {
+  display: flex; align-items: center;
+  justify-content: space-between; gap: 8px;
+  margin-bottom: 4px; flex-wrap: wrap;
+}
+.log-product { font-weight: 700; font-size: 0.95rem; }
+.log-qty { font-size: 0.82rem; color: var(--muted); }
+.log-meta { font-size: 0.75rem; color: var(--muted); line-height: 1.6; }
+.log-batch { font-family: monospace; background: rgba(0,0,0,0.06); padding: 1px 5px; font-size: 0.72rem; }
+.badge {
+  font-size: 0.65rem; font-weight: 700; padding: 2px 7px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.badge-ui       { background: #e8f0fe; color: #1a56db; }
+.badge-telegram { background: #e8f5ee; color: var(--green); }
+.badge-user     { background: #fff3e0; color: #e65100; }
+
+.logs-filters { display: flex; gap: 8px; margin-bottom: 0.75rem; flex-wrap: wrap; }
+.logs-filters input,
+.logs-filters select { flex: 1; min-width: 130px; font-size: 15px; }
+
+.logs-count { font-size: 0.75rem; color: var(--muted); text-align: right; margin-bottom: 0.5rem; }
+
+/* ── Toast ──────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: #fff;
+  padding: 10px 18px; font-size: 0.85rem;
+  border-left: 4px solid var(--saffron);
+  box-shadow: 3px 3px 0 rgba(0,0,0,0.3);
+  z-index: 999; white-space: nowrap;
+  animation: toastIn 0.2s ease, toastOut 0.3s ease 2.5s forwards;
+}
+@keyframes toastIn  { from { opacity:0; transform: translateX(-50%) translateY(10px); } to { opacity:1; transform: translateX(-50%); } }
+@keyframes toastOut { to   { opacity:0; transform: translateX(-50%) translateY(10px); } }
+
+.spinner {
+  width: 18px; height: 18px;
+  border: 3px solid rgba(255,255,255,0.4); border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-msg {
+  background: var(--red-light); border: 2px solid var(--red);
+  color: var(--red); padding: 8px 12px;
+  font-size: 0.85rem; margin-bottom: 0.75rem; display: none;
+}
+
+/* ── Bottom nav ─────────────────────────────── */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #fff; border-top: 3px solid var(--border);
+  display: flex; z-index: 100;
+}
+.nav-tab {
+  flex: 1; padding: 10px 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--muted);
+  cursor: pointer; border: none; background: none;
+  touch-action: manipulation;
+}
+.nav-tab.active { color: var(--saffron); }
+.nav-tab-icon { font-size: 1.3rem; }
+
+.tab-page { display: none; }
+.tab-page.active { display: block; }
+
+/* ── Add row button ─────────────────────────── */
+.btn-add-row {
+  width: 100%; padding: 12px;
+  border: 2.5px dashed #bbb; background: transparent;
+  font-family: 'DM Sans', sans-serif; font-size: 0.9rem;
+  color: var(--muted); cursor: pointer; margin-top: 4px;
+  touch-action: manipulation;
+}
+.btn-add-row:active { border-color: var(--saffron); color: var(--saffron); background: #fff8f4; }
+
+@media (min-width: 600px) {
+  .brand-name { font-size: 1.4rem; }
+  .brand-sub  { font-size: 0.7rem; }
+  .job-row-fields { grid-template-columns: 1fr 120px 80px; }
+  .page { padding: 1.5rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Login ──────────────────────────────────── -->
+<div id="loginScreen" style="display:none;">
+  <div class="login-box">
+    <div class="login-logo">SRI RADHE TRADERS</div>
+    <div class="login-sub">Label Printing System</div>
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input type="text" id="loginUser" placeholder="Enter username"
+        autocomplete="username" onkeydown="if(event.key==='Enter') doLogin()"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" id="loginPass" placeholder="Enter password"
+        autocomplete="current-password" onkeydown="if(event.key==='Enter') doLogin()"/>
+    </div>
+    <div class="error-msg" id="loginError"></div>
+    <button class="btn-primary" id="loginBtn" onclick="doLogin()">LOGIN</button>
+  </div>
+  <div style="margin-top:1rem; font-size:0.72rem; color:rgba(255,255,255,0.8);">
+    Session stays active for 24 hours of use
+  </div>
+</div>
+
+<!-- ── Main App ────────────────────────────────── -->
+<div id="mainApp">
+
+  <header>
+    <div>
+      <div class="brand-name">SRI RADHE TRADERS</div>
+      <div class="brand-sub">Label Printing System</div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <div class="status-pill" onclick="checkStatus()" title="Click to refresh">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Checking...</span>
+      </div>
+      <button onclick="doLogout()" style="
+        background:rgba(0,0,0,0.2); border:1.5px solid rgba(255,255,255,0.3);
+        color:#fff; padding:6px 10px; font-family:'DM Sans',sans-serif;
+        font-size:0.75rem; font-weight:600; cursor:pointer; letter-spacing:0.5px;
+        touch-action:manipulation;">⏻ Logout</button>
+    </div>
+  </header>
+
+  <div class="page">
+
+    <!-- ── Tab: Print ── -->
+    <div class="tab-page active" id="tab-print">
+      <div class="section-title">Print Labels</div>
+
+      <!-- Sticker type + hotel selector -->
+      <div class="card" style="margin-bottom:0.75rem; padding:0.75rem 1rem;">
+        <div style="display:flex; gap:8px;">
+          <div style="flex:1;">
+            <label class="form-label" style="margin-bottom:8px;">Sticker Type</label>
+            <select id="stickerType" onchange="onStickerTypeChange()">
+              <option value="product" selected>🏷️ Product Label</option>
+              <option value="ingredients">📝 Ingredients Label</option>
+            </select>
+          </div>
+          <div style="flex:1;" id="printHotelWrap">
+            <label class="form-label" style="margin-bottom:8px;">Hotel</label>
+            <select id="printHotel" onchange="onPrintHotelChange()">
+              <option value="general" selected>General</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px;" id="dateFieldsWrap">
+          <div style="flex:1;">
+            <label class="form-label" style="margin-bottom:8px;">Packed Date</label>
+            <input type="date" id="packedDate" style="width:100%; border:2px solid var(--border); padding:10px 12px;
+              font-family:'DM Sans',sans-serif; font-size:16px; background:var(--paper);
+              color:var(--ink); outline:none; border-radius:0; -webkit-appearance:none; appearance:none;"
+              onchange="onPackedDateChange()"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" style="margin-bottom:8px;">Best Before</label>
+            <input type="date" id="bestBeforeDate" style="width:100%; border:2px solid var(--border); padding:10px 12px;
+              font-family:'DM Sans',sans-serif; font-size:16px; background:var(--paper);
+              color:var(--ink); outline:none; border-radius:0; -webkit-appearance:none; appearance:none;"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Product label UI -->
+      <div class="card" id="productSection">
+        <div id="jobRows"></div>
+        <button class="btn-add-row" onclick="addRow()">+ Add item</button>
+        <button class="btn-primary" id="printBtn" onclick="submitPrint()" style="margin-top:1rem;">
+          <span id="printBtnContent">🖨️ PRINT LABELS</span>
+        </button>
+        <button class="btn-secondary" onclick="resetAll()">↺ RESET</button>
+      </div>
+
+      <!-- Ingredients label UI -->
+      <div class="card" id="ingredientsSection" style="display:none;">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+          Ingredients Text
+        </div>
+        <textarea id="ingredientsText" rows="6" placeholder="e.g. Refined Wheat Flour, Rice Flour, Salt, Turmeric Powder, Chilli Powder..."
+          style="width:100%; border:2px solid var(--border); padding:10px 12px;
+          font-family:'DM Sans',sans-serif; font-size:16px; background:var(--paper);
+          color:var(--ink); outline:none; border-radius:0; resize:vertical;
+          -webkit-appearance:none; appearance:none;"></textarea>
+        <div class="form-group" style="margin-top:0.75rem; margin-bottom:0;">
+          <label class="form-label">Quantity</label>
+          <input type="number" id="ingredientsQty" placeholder="Number of stickers" min="1" max="500" value="1"/>
+        </div>
+        <button class="btn-primary" id="ingredientsPrintBtn" onclick="submitIngredientsPrint()" style="margin-top:1rem;">
+          <span id="ingredientsPrintBtnContent">🖨️ PRINT INGREDIENTS</span>
+        </button>
+        <button class="btn-secondary" onclick="resetIngredients()">↺ RESET</button>
+      </div>
+
+      <div id="results"></div>
+    </div>
+
+    <!-- ── Tab: Products ── -->
+    <div class="tab-page" id="tab-products">
+      <div class="section-title">Product List</div>
+      <div class="card" style="margin-bottom:0.75rem; padding:0.75rem 1rem;">
+        <label class="form-label" style="margin-bottom:8px;">Hotel</label>
+        <select id="productsHotel" onchange="onProductsHotelChange()">
+          <option value="general" selected>General</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="product-list" id="productList"></div>
+        <div style="border-top:2px dashed #ddd; padding-top:0.75rem; margin-top:0.5rem;">
+          <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Add New Product</div>
+          <div class="add-product-row">
+            <input type="text" id="newProduct" placeholder="Product name" style="text-transform:uppercase;"/>
+            <input type="text" id="newWeight" placeholder="Weight (e.g. 2)" style="max-width:110px;"/>
+            <button class="btn-small" onclick="addProductHandler()">+ Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: History ── -->
+    <div class="tab-page" id="tab-history">
+      <div class="section-title">Print History</div>
+      <div class="card">
+        <div class="logs-filters">
+          <input type="text" id="logFilterProduct" placeholder="Filter product..."
+            oninput="loadLogs()"/>
+          <select id="logFilterUser" onchange="loadLogs()" style="display:none;">
+            <option value="">All users</option>
+          </select>
+        </div>
+        <div class="logs-count" id="logsCount"></div>
+        <div id="logsContainer">
+          <div style="text-align:center; color:var(--muted); padding:2rem;">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end page -->
+
+  <!-- Bottom nav -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" id="nav-print" onclick="switchTab('print')">
+      <span class="nav-tab-icon">🖨️</span>Print
+    </button>
+    <button class="nav-tab" id="nav-products" onclick="switchTab('products')">
+      <span class="nav-tab-icon">📦</span>Products
+    </button>
+    <button class="nav-tab" id="nav-history" onclick="switchTab('history')">
+      <span class="nav-tab-icon">📋</span>History
+    </button>
+  </nav>
+
+</div><!-- end mainApp -->
+
+<script>
+const API = 'https://canine-wrecker-mobile.ngrok-free.dev/api';
+
+// ── Tokens ───────────────────────────────────
+function saveTokens(d) {
+  localStorage.setItem('access_token',  d.access_token);
+  localStorage.setItem('refresh_token', d.refresh_token);
+  if (d.username) localStorage.setItem('username', d.username);
+  if (d.is_admin !== undefined) localStorage.setItem('is_admin', d.is_admin);
+}
+function clearTokens() {
+  ['access_token','refresh_token','username','is_admin'].forEach(k => localStorage.removeItem(k));
+}
+const getAccessToken  = () => localStorage.getItem('access_token');
+const getRefreshToken = () => localStorage.getItem('refresh_token');
+const getUsername     = () => localStorage.getItem('username') || '';
+const getIsAdmin      = () => localStorage.getItem('is_admin') === 'true';
+
+async function refreshTokens() {
+  const rt = getRefreshToken();
+  if (!rt) return false;
+  try {
+    const res = await fetch(`${API}/refresh`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'ngrok-skip-browser-warning':'true'},
+      body: JSON.stringify({refresh_token: rt})
+    });
+    if (!res.ok) { clearTokens(); return false; }
+    saveTokens(await res.json());
+    return true;
+  } catch { return false; }
+}
+
+async function apiFetch(url, opts={}) {
+  opts.headers = opts.headers || {};
+  opts.headers['Authorization'] = `Bearer ${getAccessToken()}`;
+  opts.headers['ngrok-skip-browser-warning'] = 'true';
+  let res = await fetch(url, opts);
+  if (res.status === 401) {
+    const ok = await refreshTokens();
+    if (!ok) { showLogin(); return null; }
+    opts.headers['Authorization'] = `Bearer ${getAccessToken()}`;
+    opts.headers['ngrok-skip-browser-warning'] = 'true';
+    res = await fetch(url, opts);
+    if (res.status === 401) { showLogin(); return null; }
+  }
+  return res;
+}
+
+// ── Auth ─────────────────────────────────────
+function showLogin() {
+  clearTokens();
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('mainApp').style.display     = 'none';
+}
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display     = 'block';
+}
+
+async function doLogin() {
+  const btn  = document.getElementById('loginBtn');
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value.trim();
+  const err  = document.getElementById('loginError');
+  err.style.display = 'none';
+  if (!user || !pass) { err.textContent='Enter username and password'; err.style.display='block'; return; }
+  btn.innerHTML = '<div class="spinner"></div>'; btn.disabled = true;
+  try {
+    const res  = await fetch(`${API}/login`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning':'true'},
+      body: JSON.stringify({username:user, password:pass})
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.error||'Login failed'; err.style.display='block'; }
+    else { saveTokens(data); showApp(); initApp(); }
+  } catch { err.textContent='Cannot reach server. Is it running?'; err.style.display='block'; }
+  finally { btn.innerHTML='LOGIN'; btn.disabled=false; }
+}
+
+window.onload = () => {
+  const rt = getRefreshToken();
+  if (rt) { refreshTokens().then(ok => { if(ok){showApp();initApp();}else{showLogin();} }); }
+  else showLogin();
+};
+
+function doLogout() {
+  if (!confirm('Log out?')) return;
+  clearTokens();
+  showLogin();
+  showToast('Logged out');
+}
+
+function initApp() {
+  addRow(); addRow();
+  checkStatus();
+  loadProducts();
+  setDefaultDates();
+}
+
+function setDefaultDates() {
+  const today = new Date();
+  const packedEl = document.getElementById('packedDate');
+  const bbEl     = document.getElementById('bestBeforeDate');
+  if (packedEl) packedEl.value = formatDateInput(today);
+  if (bbEl) {
+    const bb = new Date(today);
+    bb.setMonth(bb.getMonth() + 3);
+    bbEl.value = formatDateInput(bb);
+  }
+}
+
+function formatDateInput(d) {
+  // Returns YYYY-MM-DD for <input type="date">
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDateForServer(dateStr) {
+  // Converts YYYY-MM-DD (from input) to DD/MM/YYYY for the server
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return '';
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function onPackedDateChange() {
+  // When packed date changes, auto-update best before to packed + 3 months
+  const packedVal = document.getElementById('packedDate')?.value;
+  if (!packedVal) return;
+  const packed = new Date(packedVal);
+  const bb = new Date(packed);
+  bb.setMonth(bb.getMonth() + 3);
+  const bbEl = document.getElementById('bestBeforeDate');
+  if (bbEl) bbEl.value = formatDateInput(bb);
+}
+
+// ── Tabs ─────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  document.getElementById(`nav-${name}`).classList.add('active');
+  if (name === 'history') loadLogs();
+  if (name === 'products') loadProducts();
+}
+
+// ── Status ───────────────────────────────────
+async function checkStatus() {
+  const dot  = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  dot.className = 'status-dot';
+  try {
+    const res  = await apiFetch(`${API}/status`);
+    if (!res) return;
+    const data = await res.json();
+    const ok   = data.status.includes('online');
+    dot.className    = 'status-dot ' + (ok ? 'online' : 'offline');
+    text.textContent = ok ? 'Online' : 'Offline';
+  } catch { dot.className='status-dot offline'; text.textContent='Offline'; }
+}
+
+// ── Job rows ─────────────────────────────────
+let rowId = 0;
+let products = [];       // current hotel's products for combo dropdown
+let allByHotel = {};     // { hotel: [{name, weight}, ...] }
+let hotels = [];         // ['general', ...]
+
+function getUOM(val) {
+  const n = parseFloat(val);
+  if (isNaN(n)) return {label:'—', cls:''};
+  return n < 100 ? {label:'KGS', cls:'kgs'} : {label:'GMS', cls:'gms'};
+}
+
+function updateUOM(id) {
+  const wt  = document.getElementById(`wt-${id}`)?.value || '';
+  const badge = document.getElementById(`uom-${id}`);
+  if (!badge) return;
+  const uom = getUOM(wt);
+  badge.textContent = uom.label || '—';
+  badge.className   = `uom-badge ${uom.cls}`;
+}
+
+function onProductSelect(id) {
+  const name  = (document.getElementById(`prod-${id}`)?.value||'').trim().toUpperCase();
+  const match = products.find(p => p.name.toUpperCase() === name);
+  if (match) {
+    const n = parseFloat(match.weight);
+    document.getElementById(`wt-${id}`).value = isNaN(n) ? '' : n;
+    updateUOM(id);
+  } else {
+    document.getElementById(`wt-${id}`).value = '';
+    const b = document.getElementById(`uom-${id}`);
+    if (b) { b.textContent='—'; b.className='uom-badge'; }
+  }
+}
+
+function addRow(product='', qty='', weight='') {
+  rowId++;
+  const id  = rowId;
+  const div = document.createElement('div');
+  div.className = 'job-card';
+  div.id = `row-${id}`;
+  const uom = weight ? getUOM(parseFloat(weight)) : {label:'—', cls:''};
+
+  div.innerHTML = `
+    <button class="job-card-remove" onclick="removeRow(${id})">×</button>
+    <div class="combo-wrap" style="margin-bottom:8px;">
+      <input type="text" id="prod-${id}" placeholder="Product name" value="${product}"
+        style="text-transform:uppercase; padding-right:32px;"
+        oninput="onComboInput(${id})" onfocus="openCombo(${id})"
+        onblur="onComboBlur(${id})" autocomplete="off"/>
+      <div class="combo-dropdown" id="combo-dd-${id}"></div>
+    </div>
+    <div class="job-row-fields">
+      <input type="number" id="qty-${id}" placeholder="Quantity" min="1" max="500" value="${qty}"/>
+      <input type="text"   id="wt-${id}"  placeholder="Weight" value="${weight}" oninput="updateUOM(${id})"/>
+      <div class="uom-badge ${uom.cls}" id="uom-${id}">${uom.label||'—'}</div>
+    </div>
+  `;
+  document.getElementById('jobRows').appendChild(div);
+  renderCombo(id, '');
+}
+
+function removeRow(id) {
+  const rows = document.querySelectorAll('.job-card');
+  if (rows.length <= 1) return;
+  document.getElementById(`row-${id}`)?.remove();
+}
+
+function renderCombo(id, filter) {
+  const dd  = document.getElementById(`combo-dd-${id}`);
+  const val = (document.getElementById(`prod-${id}`)?.value||'').toUpperCase().trim();
+  const filtered   = products.filter(p => p.name.toUpperCase().includes(filter.toUpperCase()));
+  const exactMatch = products.some(p => p.name.toUpperCase() === val);
+  let html = filtered.map(p => `
+    <div class="combo-option" onmousedown="selectOption(${id},'${p.name}',${parseFloat(p.weight)||''})">
+      <span>${p.name}</span><span class="combo-option-weight">${p.weight}</span>
+    </div>`).join('');
+  if (val && !exactMatch)
+    html += `<div class="combo-new" onmousedown="addNewProduct(${id})">+ Add "${val}" to list</div>`;
+  dd.innerHTML = html || '<div class="combo-option" style="color:#aaa;pointer-events:none;">No products found</div>';
+}
+
+function openCombo(id) {
+  renderCombo(id, (document.getElementById(`prod-${id}`)?.value||'').toUpperCase());
+  document.getElementById(`combo-dd-${id}`)?.classList.add('open');
+}
+function onComboBlur(id) {
+  setTimeout(() => document.getElementById(`combo-dd-${id}`)?.classList.remove('open'), 200);
+}
+function onComboInput(id) {
+  const v = document.getElementById(`prod-${id}`);
+  v.value = v.value.toUpperCase();
+  renderCombo(id, v.value.trim());
+  document.getElementById(`combo-dd-${id}`)?.classList.add('open');
+  onProductSelect(id);
+}
+function selectOption(id, name, wNum) {
+  document.getElementById(`prod-${id}`).value = name;
+  if (wNum) { document.getElementById(`wt-${id}`).value = wNum; updateUOM(id); }
+  document.getElementById(`combo-dd-${id}`)?.classList.remove('open');
+}
+async function addNewProduct(id) {
+  const name = (document.getElementById(`prod-${id}`)?.value||'').trim().toUpperCase();
+  const qty  = document.getElementById(`qty-${id}`)?.value;
+  if (!name) return;
+  if (!qty || qty < 1) { showToast('Fill quantity first'); return; }
+  const wtRaw = (document.getElementById(`wt-${id}`)?.value||'').trim();
+  const wtNum = parseFloat(wtRaw);
+  let weight  = !isNaN(wtNum) ? (wtNum<100?`${wtNum} KGS`:`${wtNum} GMS`) : '500 GMS';
+  const hotel = document.getElementById('printHotel')?.value || 'general';
+  try {
+    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
+    await loadProducts();
+    document.getElementById(`wt-${id}`).value = parseFloat(weight);
+    updateUOM(id);
+    document.getElementById(`combo-dd-${id}`)?.classList.remove('open');
+    showToast(`✅ Added ${name} → ${weight}`);
+  } catch { showToast('Failed to add product'); }
+}
+
+// ── Print ─────────────────────────────────────
+async function submitPrint() {
+  const btn     = document.getElementById('printBtn');
+  const content = document.getElementById('printBtnContent');
+  const rows    = document.querySelectorAll('.job-card');
+  const jobs    = [];
+  let hasError  = false;
+
+  rows.forEach(row => {
+    const id  = row.id.replace('row-','');
+    const prod = (document.getElementById(`prod-${id}`)?.value||'').trim().toUpperCase();
+    const qty  = (document.getElementById(`qty-${id}`)?.value||'').trim();
+    const wt   = (document.getElementById(`wt-${id}`)?.value||'').trim();
+    document.getElementById(`prod-${id}`)?.classList.remove('error');
+    document.getElementById(`qty-${id}`)?.classList.remove('error');
+    if (!prod && !qty) return;
+    if (!prod) { document.getElementById(`prod-${id}`)?.classList.add('error'); hasError=true; return; }
+    if (!qty||isNaN(qty)||qty<1) { document.getElementById(`qty-${id}`)?.classList.add('error'); hasError=true; return; }
+    let line = `${prod},${qty}`;
+    if (wt) line += `,${wt}`;
+    jobs.push({line});
+  });
+
+  if (hasError) { showToast('Fix highlighted fields'); return; }
+  if (!jobs.length) { showToast('Add at least one item'); return; }
+
+  btn.disabled = true;
+  content.innerHTML = '<div class="spinner"></div>';
+
+  const hotel = document.getElementById('printHotel')?.value || 'general';
+  const packedOn   = formatDateForServer(document.getElementById('packedDate')?.value || '');
+  const bestBefore = formatDateForServer(document.getElementById('bestBeforeDate')?.value || '');
+  try {
+    const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs, hotel, packed_on: packedOn, best_before: bestBefore})});
+    if (!res) return;
+    const data = await res.json();
+    showResults(data.results);
+    document.getElementById('jobRows').innerHTML='';
+    rowId=0; addRow(); addRow();
+  } catch { showToast('❌ Cannot reach server'); }
+  finally { btn.disabled=false; content.innerHTML='🖨️ PRINT LABELS'; }
+}
+
+function showResults(results) {
+  const c = document.getElementById('results');
+  c.innerHTML = '';
+  results.forEach(r => {
+    const d = document.createElement('div');
+    d.className = `result-item ${r.success?'success':'fail'}`;
+    if (r.success) {
+      d.innerHTML = `
+        <div class="result-icon">✅</div>
+        <div>
+          <div class="result-product">${r.product} × ${r.quantity}</div>
+          <div class="result-detail">
+            ${r.weight} · Packed: ${r.packed_on} · BB: ${r.best_before}<br>
+            Batch: <span class="result-batch">${r.batch_no}</span>
+          </div>
+        </div>`;
+    } else {
+      d.innerHTML = `<div class="result-icon">❌</div><div><div class="result-product">${r.line}</div><div class="result-detail" style="color:var(--red)">${r.error||'Failed'}</div></div>`;
+    }
+    c.appendChild(d);
+  });
+  if (results.length) c.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function resetAll() {
+  document.getElementById('jobRows').innerHTML='';
+  document.getElementById('results').innerHTML='';
+  rowId=0; addRow(); addRow();
+  showToast('Cleared');
+}
+
+// ── Products ─────────────────────────────────
+function getSelectedPrintHotel() {
+  return document.getElementById('printHotel')?.value || 'general';
+}
+function getSelectedProductsHotel() {
+  return document.getElementById('productsHotel')?.value || 'general';
+}
+
+function populateHotelDropdowns() {
+  const printSel    = document.getElementById('printHotel');
+  const productsSel = document.getElementById('productsHotel');
+  const curPrint    = printSel?.value || 'general';
+  const curProducts = productsSel?.value || 'general';
+
+  const opts = hotels.map(h => {
+    const label = h.charAt(0).toUpperCase() + h.slice(1);
+    return `<option value="${h}">${label}</option>`;
+  }).join('');
+
+  if (printSel) {
+    printSel.innerHTML = opts;
+    printSel.value = hotels.includes(curPrint) ? curPrint : hotels[0] || 'general';
+  }
+  if (productsSel) {
+    productsSel.innerHTML = opts;
+    productsSel.value = hotels.includes(curProducts) ? curProducts : hotels[0] || 'general';
+  }
+}
+
+async function loadProducts() {
+  const list = document.getElementById('productList');
+  let data;
+  try {
+    const res  = await apiFetch(`${API}/products`);
+    if (!res) {
+      if (list) list.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">⚠️ Server offline — start server.py to manage products.</div>';
+      return;
+    }
+    data = await res.json();
+  } catch(e) {
+    if (list) list.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">⚠️ Cannot load products — is server.py running?</div>';
+    return;
+  }
+
+  allByHotel = data.by_hotel || {};
+  hotels     = data.hotels || Object.keys(allByHotel);
+  if (!hotels.includes('general')) hotels.unshift('general');
+
+  populateHotelDropdowns();
+
+  // Set products for print combo dropdown based on selected print hotel
+  const printHotel = getSelectedPrintHotel();
+  products = allByHotel[printHotel] || [];
+  renderProducts();
+}
+
+function onPrintHotelChange() {
+  const hotel = getSelectedPrintHotel();
+  products = allByHotel[hotel] || [];
+  // Re-render all open combo dropdowns
+  document.querySelectorAll('.job-card').forEach(row => {
+    const id = row.id.replace('row-','');
+    onProductSelect(id);
+  });
+}
+
+function onProductsHotelChange() {
+  renderProducts();
+}
+
+function renderProducts() {
+  const list = document.getElementById('productList');
+  if (!list) return;
+  const hotel = getSelectedProductsHotel();
+  const hotelProducts = allByHotel[hotel] || [];
+  list.innerHTML = hotelProducts.length ? hotelProducts.map((p,i)=>`
+    <div class="product-item" id="pitem-${i}">
+      <div>
+        <div class="product-item-name">${p.name}</div>
+        <div class="product-item-weight">${p.weight}</div>
+      </div>
+      <div class="product-item-actions">
+        <button class="product-item-edit" onclick="editProduct(${i},'${p.name.replace(/'/g,"\\'")}','${p.weight.replace(/'/g,"\\'")}')">✎</button>
+        <button class="product-item-remove" onclick="removeProduct('${p.name.replace(/'/g,"\\'")}')">×</button>
+      </div>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">No products in this hotel.</div>';
+}
+
+function editProduct(idx, name, weight) {
+  const el = document.getElementById(`pitem-${idx}`);
+  if (!el) return;
+  // Parse numeric part from weight for the input
+  const wNum = parseFloat(weight) || '';
+  el.className = 'product-edit-row';
+  el.innerHTML = `
+    <input type="text" id="pedit-name-${idx}" value="${name}" style="text-transform:uppercase; flex:2;"/>
+    <input type="text" id="pedit-wt-${idx}" value="${wNum}" style="max-width:70px;"/>
+    <button class="btn-small" onclick="saveProduct(${idx},'${name.replace(/'/g,"\\'")}')">Save</button>
+    <button class="product-edit-cancel" onclick="renderProducts()">✕</button>
+  `;
+  document.getElementById(`pedit-name-${idx}`)?.focus();
+}
+
+async function saveProduct(idx, oldName) {
+  const newName   = (document.getElementById(`pedit-name-${idx}`)?.value || '').trim().toUpperCase();
+  const newWtRaw  = (document.getElementById(`pedit-wt-${idx}`)?.value || '').trim();
+  const hotel     = getSelectedProductsHotel();
+
+  if (!newName || !newWtRaw) { showToast('Enter name and weight'); return; }
+
+  // Auto-UOM
+  const wtNum = parseFloat(newWtRaw);
+  let newWeight = newWtRaw.toUpperCase();
+  if (!isNaN(wtNum) && !newWtRaw.match(/[a-zA-Z]/)) {
+    newWeight = wtNum < 100 ? `${wtNum} KGS` : `${wtNum} GMS`;
+  }
+
+  try {
+    // If name changed, remove old then add new
+    if (newName !== oldName) {
+      await apiFetch(`${API}/products/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:oldName,hotel})});
+    }
+    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:newName,weight:newWeight,hotel})});
+    await loadProducts();
+    showToast(`✅ Updated ${newName}`);
+  } catch { showToast('Failed to update'); }
+}
+
+async function addProductHandler() {
+  const name   = document.getElementById('newProduct').value.trim().toUpperCase();
+  const weight = document.getElementById('newWeight').value.trim().toUpperCase();
+  const hotel  = getSelectedProductsHotel();
+  if (!name||!weight) { showToast('Enter name and weight'); return; }
+  try {
+    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
+    document.getElementById('newProduct').value='';
+    document.getElementById('newWeight').value='';
+    await loadProducts(); showToast(`✅ Added ${name}`);
+  } catch { showToast('Failed'); }
+}
+
+async function removeProduct(name) {
+  const hotel = getSelectedProductsHotel();
+  if (!confirm(`Remove ${name} from [${hotel}]?`)) return;
+  try {
+    await apiFetch(`${API}/products/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,hotel})});
+    await loadProducts(); showToast(`Removed ${name}`);
+  } catch { showToast('Failed'); }
+}
+
+// ── Logs ─────────────────────────────────────
+async function loadLogs() {
+  const c       = document.getElementById('logsContainer');
+  const product = (document.getElementById('logFilterProduct')?.value||'').trim();
+  const user    = (document.getElementById('logFilterUser')?.value||'').trim();
+  let url       = `${API}/logs?limit=100`;
+  if (product) url += `&product=${encodeURIComponent(product)}`;
+  if (user)    url += `&user=${encodeURIComponent(user)}`;
+  try {
+    const res  = await apiFetch(url);
+    if (!res) return;
+    const data = await res.json();
+    const sel  = document.getElementById('logFilterUser');
+    if (data.is_admin && sel) {
+      sel.style.display = 'block';
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">All users</option>' +
+        data.usernames.map(u=>`<option value="${u}" ${u===cur?'selected':''}>${u}</option>`).join('');
+    }
+    document.getElementById('logsCount').textContent = `${data.logs.length} record${data.logs.length!==1?'s':''}`;
+    if (!data.logs.length) { c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">No history yet.</div>'; return; }
+    c.innerHTML = data.logs.map(l=>`
+      <div class="log-entry">
+        <div class="log-entry-top">
+          <span class="log-product">${l.product}</span>
+          <span class="log-qty">× ${l.quantity} · ${l.weight}</span>
+        </div>
+        <div class="log-meta">
+          <span class="badge badge-${l.source}">${l.source}</span>
+          ${data.is_admin ? `<span class="badge badge-user">${l.username}</span>` : ''}
+          · ${l.timestamp.substring(0,16).replace('T',' ')}
+          · Batch: <span class="log-batch">${l.batch_no}</span><br>
+          Packed: ${l.packed_on} · Best Before: ${l.best_before}
+        </div>
+      </div>`).join('');
+  } catch { c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">Failed to load.</div>'; }
+}
+
+// ── Sticker type toggle ──────────────────────
+function onStickerTypeChange() {
+  const type = document.getElementById('stickerType').value;
+  document.getElementById('productSection').style.display     = type === 'product'     ? 'block' : 'none';
+  document.getElementById('ingredientsSection').style.display  = type === 'ingredients' ? 'block' : 'none';
+  document.getElementById('printHotelWrap').style.display      = type === 'product'     ? 'block' : 'none';
+  document.getElementById('dateFieldsWrap').style.display      = type === 'product'     ? 'flex'  : 'none';
+  document.getElementById('results').innerHTML = '';
+}
+
+// ── Ingredients print ────────────────────────
+async function submitIngredientsPrint() {
+  const btn     = document.getElementById('ingredientsPrintBtn');
+  const content = document.getElementById('ingredientsPrintBtnContent');
+  const text    = (document.getElementById('ingredientsText')?.value || '').trim();
+  const qtyVal  = (document.getElementById('ingredientsQty')?.value || '').trim();
+
+  document.getElementById('ingredientsText')?.classList.remove('error');
+  document.getElementById('ingredientsQty')?.classList.remove('error');
+
+  if (!text) {
+    document.getElementById('ingredientsText')?.classList.add('error');
+    showToast('Enter ingredients text');
+    return;
+  }
+  const qty = parseInt(qtyVal) || 0;
+  if (qty < 1 || qty > 500) {
+    document.getElementById('ingredientsQty')?.classList.add('error');
+    showToast('Quantity must be 1–500');
+    return;
+  }
+
+  btn.disabled = true;
+  content.innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const res = await apiFetch(`${API}/print`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        jobs: [{ line: `${text} ;; i ${qty}` }]
+      })
+    });
+    if (!res) return;
+    const data = await res.json();
+    showIngredientsResults(data.results);
+  } catch { showToast('❌ Cannot reach server'); }
+  finally { btn.disabled = false; content.innerHTML = '🖨️ PRINT INGREDIENTS'; }
+}
+
+function showIngredientsResults(results) {
+  const c = document.getElementById('results');
+  c.innerHTML = '';
+  results.forEach(r => {
+    const d = document.createElement('div');
+    d.className = `result-item ${r.success ? 'success' : 'fail'}`;
+    if (r.success) {
+      d.innerHTML = `
+        <div class="result-icon">✅</div>
+        <div>
+          <div class="result-product">Ingredients × ${r.quantity}</div>
+          <div class="result-detail">Ingredients sticker printed successfully</div>
+        </div>`;
+    } else {
+      d.innerHTML = `
+        <div class="result-icon">❌</div>
+        <div>
+          <div class="result-product">Ingredients</div>
+          <div class="result-detail" style="color:var(--red)">${r.error || 'Failed'}</div>
+        </div>`;
+    }
+    c.appendChild(d);
+  });
+  if (results.length) c.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function resetIngredients() {
+  document.getElementById('ingredientsText').value = '';
+  document.getElementById('ingredientsQty').value  = '1';
+  document.getElementById('results').innerHTML     = '';
+  document.getElementById('ingredientsText')?.classList.remove('error');
+  document.getElementById('ingredientsQty')?.classList.remove('error');
+  showToast('Cleared');
+}
+
+// ── Toast ─────────────────────────────────────
+function showToast(msg) {
+  document.querySelector('.toast')?.remove();
+  const t = document.createElement('div');
+  t.className='toast'; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 3000);
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
