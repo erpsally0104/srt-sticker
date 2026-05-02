@@ -127,6 +127,8 @@ def print_labels():
     body  = request.get_json()
     jobs  = body.get("jobs", [])
     hotel = (body.get("hotel") or "general").strip().lower()
+    packed_on   = (body.get("packed_on") or "").strip() or None
+    best_before = (body.get("best_before") or "").strip() or None
     if not jobs:
         return jsonify({"error": "No jobs provided"}), 400
 
@@ -137,7 +139,7 @@ def print_labels():
         line = job.get("line", "").strip()
         if not line:
             continue
-        req, error = parse_message(line, hotel=hotel)
+        req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before)
         if error:
             results.append({"line": line, "success": False, "error": error})
             continue

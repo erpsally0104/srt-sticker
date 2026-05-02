@@ -83,6 +83,7 @@ body {
 input[type="text"],
 input[type="number"],
 input[type="password"],
+input[type="date"],
 select {
   width: 100%;
   border: 2px solid var(--border);
@@ -302,6 +303,17 @@ header {
 }
 .product-item-name { font-weight: 600; font-size: 0.9rem; }
 .product-item-weight { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+.product-item-actions {
+  display: flex; gap: 4px; flex-shrink: 0;
+}
+.product-item-edit {
+  width: 32px; height: 32px; flex-shrink: 0;
+  border: 1.5px solid #ddd; background: #fff;
+  color: #bbb; font-size: 0.85rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.product-item-edit:active { border-color: var(--saffron); color: var(--saffron); }
 .product-item-remove {
   width: 32px; height: 32px; flex-shrink: 0;
   border: 1.5px solid #ddd; background: #fff;
@@ -310,6 +322,20 @@ header {
   touch-action: manipulation;
 }
 .product-item-remove:active { border-color: var(--red); color: var(--red); }
+.product-edit-row {
+  display: flex; gap: 6px; align-items: center;
+  padding: 8px 10px; border: 2px solid var(--saffron); background: #fff;
+}
+.product-edit-row input {
+  flex: 1; min-width: 0; padding: 6px 8px; font-size: 14px;
+}
+.product-edit-row .btn-small { padding: 6px 10px; font-size: 0.78rem; }
+.product-edit-cancel {
+  padding: 6px 10px; font-size: 0.78rem;
+  background: #fff; color: var(--muted); border: 2px solid #ddd;
+  font-family: 'DM Sans', sans-serif; font-weight: 600;
+  cursor: pointer; touch-action: manipulation;
+}
 
 .add-product-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .add-product-row input { flex: 1; min-width: 120px; }
@@ -488,6 +514,21 @@ header {
             <select id="printHotel" onchange="onPrintHotelChange()">
               <option value="general" selected>General</option>
             </select>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px;" id="dateFieldsWrap">
+          <div style="flex:1;">
+            <label class="form-label" style="margin-bottom:8px;">Packed Date</label>
+            <input type="date" id="packedDate" style="width:100%; border:2px solid var(--border); padding:10px 12px;
+              font-family:'DM Sans',sans-serif; font-size:16px; background:var(--paper);
+              color:var(--ink); outline:none; border-radius:0; -webkit-appearance:none; appearance:none;"
+              onchange="onPackedDateChange()"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" style="margin-bottom:8px;">Best Before</label>
+            <input type="date" id="bestBeforeDate" style="width:100%; border:2px solid var(--border); padding:10px 12px;
+              font-family:'DM Sans',sans-serif; font-size:16px; background:var(--paper);
+              color:var(--ink); outline:none; border-radius:0; -webkit-appearance:none; appearance:none;"/>
           </div>
         </div>
       </div>
@@ -680,6 +721,46 @@ function initApp() {
   addRow(); addRow();
   checkStatus();
   loadProducts();
+  setDefaultDates();
+}
+
+function setDefaultDates() {
+  const today = new Date();
+  const packedEl = document.getElementById('packedDate');
+  const bbEl     = document.getElementById('bestBeforeDate');
+  if (packedEl) packedEl.value = formatDateInput(today);
+  if (bbEl) {
+    const bb = new Date(today);
+    bb.setMonth(bb.getMonth() + 3);
+    bbEl.value = formatDateInput(bb);
+  }
+}
+
+function formatDateInput(d) {
+  // Returns YYYY-MM-DD for <input type="date">
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDateForServer(dateStr) {
+  // Converts YYYY-MM-DD (from input) to DD/MM/YYYY for the server
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return '';
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function onPackedDateChange() {
+  // When packed date changes, auto-update best before to packed + 3 months
+  const packedVal = document.getElementById('packedDate')?.value;
+  if (!packedVal) return;
+  const packed = new Date(packedVal);
+  const bb = new Date(packed);
+  bb.setMonth(bb.getMonth() + 3);
+  const bbEl = document.getElementById('bestBeforeDate');
+  if (bbEl) bbEl.value = formatDateInput(bb);
 }
 
 // ── Tabs ─────────────────────────────────────
@@ -857,8 +938,10 @@ async function submitPrint() {
   content.innerHTML = '<div class="spinner"></div>';
 
   const hotel = document.getElementById('printHotel')?.value || 'general';
+  const packedOn   = formatDateForServer(document.getElementById('packedDate')?.value || '');
+  const bestBefore = formatDateForServer(document.getElementById('bestBeforeDate')?.value || '');
   try {
-    const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs, hotel})});
+    const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs, hotel, packed_on: packedOn, best_before: bestBefore})});
     if (!res) return;
     const data = await res.json();
     showResults(data.results);
@@ -938,7 +1021,7 @@ async function loadProducts() {
       return;
     }
     data = await res.json();
-  } catch {
+  } catch(e) {
     if (list) list.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">⚠️ Cannot load products — is server.py running?</div>';
     return;
   }
@@ -951,13 +1034,13 @@ async function loadProducts() {
 
   // Set products for print combo dropdown based on selected print hotel
   const printHotel = getSelectedPrintHotel();
-  products = allByHotel[printHotel] || allByHotel['general'] || [];
+  products = allByHotel[printHotel] || [];
   renderProducts();
 }
 
 function onPrintHotelChange() {
   const hotel = getSelectedPrintHotel();
-  products = allByHotel[hotel] || allByHotel['general'] || [];
+  products = allByHotel[hotel] || [];
   // Re-render all open combo dropdowns
   document.querySelectorAll('.job-card').forEach(row => {
     const id = row.id.replace('row-','');
@@ -973,15 +1056,58 @@ function renderProducts() {
   const list = document.getElementById('productList');
   if (!list) return;
   const hotel = getSelectedProductsHotel();
-  const hotelProducts = allByHotel[hotel] || allByHotel['general'] || [];
-  list.innerHTML = hotelProducts.length ? hotelProducts.map(p=>`
-    <div class="product-item">
+  const hotelProducts = allByHotel[hotel] || [];
+  list.innerHTML = hotelProducts.length ? hotelProducts.map((p,i)=>`
+    <div class="product-item" id="pitem-${i}">
       <div>
         <div class="product-item-name">${p.name}</div>
         <div class="product-item-weight">${p.weight}</div>
       </div>
-      <button class="product-item-remove" onclick="removeProduct('${p.name.replace(/'/g,"\\'")}')">×</button>
+      <div class="product-item-actions">
+        <button class="product-item-edit" onclick="editProduct(${i},'${p.name.replace(/'/g,"\\'")}','${p.weight.replace(/'/g,"\\'")}')">✎</button>
+        <button class="product-item-remove" onclick="removeProduct('${p.name.replace(/'/g,"\\'")}')">×</button>
+      </div>
     </div>`).join('') : '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">No products in this hotel.</div>';
+}
+
+function editProduct(idx, name, weight) {
+  const el = document.getElementById(`pitem-${idx}`);
+  if (!el) return;
+  // Parse numeric part from weight for the input
+  const wNum = parseFloat(weight) || '';
+  el.className = 'product-edit-row';
+  el.innerHTML = `
+    <input type="text" id="pedit-name-${idx}" value="${name}" style="text-transform:uppercase; flex:2;"/>
+    <input type="text" id="pedit-wt-${idx}" value="${wNum}" style="max-width:70px;"/>
+    <button class="btn-small" onclick="saveProduct(${idx},'${name.replace(/'/g,"\\'")}')">Save</button>
+    <button class="product-edit-cancel" onclick="renderProducts()">✕</button>
+  `;
+  document.getElementById(`pedit-name-${idx}`)?.focus();
+}
+
+async function saveProduct(idx, oldName) {
+  const newName   = (document.getElementById(`pedit-name-${idx}`)?.value || '').trim().toUpperCase();
+  const newWtRaw  = (document.getElementById(`pedit-wt-${idx}`)?.value || '').trim();
+  const hotel     = getSelectedProductsHotel();
+
+  if (!newName || !newWtRaw) { showToast('Enter name and weight'); return; }
+
+  // Auto-UOM
+  const wtNum = parseFloat(newWtRaw);
+  let newWeight = newWtRaw.toUpperCase();
+  if (!isNaN(wtNum) && !newWtRaw.match(/[a-zA-Z]/)) {
+    newWeight = wtNum < 100 ? `${wtNum} KGS` : `${wtNum} GMS`;
+  }
+
+  try {
+    // If name changed, remove old then add new
+    if (newName !== oldName) {
+      await apiFetch(`${API}/products/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:oldName,hotel})});
+    }
+    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:newName,weight:newWeight,hotel})});
+    await loadProducts();
+    showToast(`✅ Updated ${newName}`);
+  } catch { showToast('Failed to update'); }
 }
 
 async function addProductHandler() {
@@ -1050,6 +1176,7 @@ function onStickerTypeChange() {
   document.getElementById('productSection').style.display     = type === 'product'     ? 'block' : 'none';
   document.getElementById('ingredientsSection').style.display  = type === 'ingredients' ? 'block' : 'none';
   document.getElementById('printHotelWrap').style.display      = type === 'product'     ? 'block' : 'none';
+  document.getElementById('dateFieldsWrap').style.display      = type === 'product'     ? 'flex'  : 'none';
   document.getElementById('results').innerHTML = '';
 }
 
