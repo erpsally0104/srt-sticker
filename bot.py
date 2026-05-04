@@ -1,10 +1,11 @@
 import logging
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
     MessageHandler,
     CommandHandler,
+    CallbackQueryHandler,
     filters,
 )
 
@@ -13,6 +14,7 @@ from product_manager import add_product, remove_product, list_products, list_hot
 from batch_manager import get_next_batch_number
 from parser import parse_message
 from printer import print_label, get_printer_status
+from print_queue import get_queue
 from logger import log_print
 
 # ──────────────────────────────────────────────
@@ -94,6 +96,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`Ingredients text ;; i 5`\n\n"
         "*General:*\n"
         "/status — Check printer status\n"
+        "/queue — View print queue\n"
+        "/cancel ID — Cancel a queued job\n"
+        "/cancelall — Cancel all queued jobs\n"
         "/listproducts — Show all hotels\n"
         "/listproducts general — Show products for a hotel\n"
         "/help — Show this message\n"
@@ -304,81 +309,188 @@ async def handle_print_request(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         requests.append(req)
 
-    # All lines valid — send to printer
-    if len(requests) > 1:
-        await update.message.reply_text(f"🖨️ Printing {len(requests)} jobs...")
-    else:
-        await update.message.reply_text("🖨️ Sending to printer...")
+    # All lines valid — check for high quantities (> 50)
+    high_qty = [req for req in requests if req.quantity > 50]
+    if high_qty:
+        # Store pending requests in user_data for confirmation
+        context.user_data["pending_print"] = requests
+        lines_desc = "\n".join(
+            f"  • *{r.product}* × {r.quantity}" for r in high_qty
+        )
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Yes, print", callback_data="confirm_print"),
+                InlineKeyboardButton("❌ Cancel", callback_data="cancel_print"),
+            ]
+        ])
+        await update.message.reply_text(
+            f"⚠️ *High quantity detected:*\n\n{lines_desc}\n\n"
+            "Are you sure you want to print this many stickers?",
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+        return
 
-    success_lines = []
-    failed_lines  = []
+    # All lines valid — send to printer
+    await _execute_print(requests, update, context)
+
+async def _execute_print(requests, update_or_query, context):
+    """Shared print execution for both direct prints and confirmed prints."""
+    # Determine if this is from a callback query or a regular message
+    is_callback = not isinstance(update_or_query, Update)
+    if is_callback:
+        # CallbackQuery object
+        send = update_or_query.message.reply_text
+        username = (update_or_query.from_user.username or "").lower()
+    else:
+        # Regular Update object
+        send = update_or_query.message.reply_text
+        username = get_username(update_or_query)
+
+    queue = get_queue()
+    queued_lines = []
 
     for req in requests:
+        q_job = queue.add(req, username=username, source="telegram")
         if req.label_type == "ingredients":
-            # Ingredients stickers don't need a batch number
-            success = print_label(req)
-            if success:
-                success_lines.append(
-                    f"✅ *Ingredients sticker* — {req.quantity} sticker(s)"
-                )
-            else:
-                failed_lines.append(f"❌ *Ingredients sticker* — print failed")
+            queued_lines.append(
+                f"📋 *Ingredients sticker* — {req.quantity} sticker(s) | Job: `{q_job.id}`"
+            )
         else:
-            batch_no = get_next_batch_number()
-            success  = print_label(req, batch_no)
-            if success:
-                hotel_tag = f" [{req.hotel}]" if req.hotel != "general" else ""
-                success_lines.append(
-                    f"✅ *{req.product}*{hotel_tag} — {req.quantity} sticker(s) | {req.weight} | Batch: {batch_no}"
-                )
-                log_print(
-                    username    = get_username(update),
-                    source      = "telegram",
-                    product     = req.product,
-                    weight      = req.weight,
-                    quantity    = req.quantity,
-                    batch_no    = batch_no,
-                    packed_on   = req.packed_on,
-                    best_before = req.best_before
-                )
-            else:
-                failed_lines.append(f"❌ *{req.product}* — print failed")
+            hotel_tag = f" [{req.hotel}]" if req.hotel != "general" else ""
+            queued_lines.append(
+                f"📋 *{req.product}*{hotel_tag} — {req.quantity} sticker(s) | {req.weight} | Batch: {q_job.batch_no} | Job: `{q_job.id}`"
+            )
 
-    # Build reply
-    if len(requests) == 1 and success_lines:
+    if len(requests) == 1:
         req = requests[0]
         if req.label_type == "ingredients":
-            await update.message.reply_text(
-                f"✅ *Printing {req.quantity} ingredients sticker(s)*\n\n"
-                f"🧾 Ingredients: {req.ingredients}",
+            await send(
+                f"🖨️ *Queued {req.quantity} ingredients sticker(s)*\n\n"
+                f"🧾 Ingredients: {req.ingredients}\n"
+                f"🔖 Job ID: `{queued_lines[0].split('Job: `')[1].rstrip('`')}`\n\n"
+                "_Use /queue to see status, /cancel ID to cancel._",
                 parse_mode="Markdown"
             )
         else:
-            batch_no = success_lines[0].split("Batch: ")[1]
+            job_id = queued_lines[0].split("Job: `")[1].rstrip("`")
+            batch_no = queued_lines[0].split("Batch: ")[1].split(" |")[0]
             hotel_line = f"🏨 Hotel      : {req.hotel}\n" if req.hotel != "general" else ""
-            await update.message.reply_text(
-                f"✅ *Printing {req.quantity} sticker(s)*\n\n"
+            await send(
+                f"🖨️ *Queued {req.quantity} sticker(s)*\n\n"
                 f"📦 Product    : {req.product}\n"
                 f"⚖️ Weight     : {req.weight}\n"
                 f"{hotel_line}"
                 f"📅 Packed On  : {req.packed_on}\n"
                 f"📅 Best Before: {req.best_before}\n"
-                f"🔖 Batch No   : {batch_no}",
+                f"🔖 Batch No   : {batch_no}\n"
+                f"🆔 Job ID     : `{job_id}`\n\n"
+                "_Use /queue to see status, /cancel ID to cancel._",
                 parse_mode="Markdown"
             )
     else:
-        all_lines = success_lines + failed_lines
-        summary   = f"*Print Summary ({len(success_lines)}/{len(requests)} succeeded)*\n\n"
-        await update.message.reply_text(
-            summary + "\n".join(all_lines),
+        summary = f"🖨️ *Queued {len(requests)} job(s)*\n\n"
+        await send(
+            summary + "\n".join(queued_lines) +
+            "\n\n_Use /queue to see status, /cancelall to cancel all._",
             parse_mode="Markdown"
         )
 
-    if failed_lines:
+
+# ─────────────────────────────────────────────────────────
+# /queue — Show current print queue
+# ─────────────────────────────────────────────────────────
+async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not check_auth(update):
+        await update.message.reply_text("⛔ You are not authorized.")
+        return
+
+    queue = get_queue()
+    jobs = queue.list_jobs()
+
+    if not jobs:
+        await update.message.reply_text("📭 Print queue is empty.")
+        return
+
+    lines = []
+    for j in jobs:
+        status_icon = "🔄" if j["status"] == "printing" else "⏳"
+        product = j["product"]
+        qty = j["quantity"]
+        jid = j["id"]
+        lines.append(f"{status_icon} `{jid}` — *{product}* × {qty} ({j['status']})")
+
+    await update.message.reply_text(
+        f"🖨️ *Print Queue ({len(jobs)} job(s))*\n\n"
+        + "\n".join(lines)
+        + "\n\n_/cancel ID — cancel a job\n/cancelall — cancel all queued_",
+        parse_mode="Markdown"
+    )
+
+
+# ─────────────────────────────────────────────────────────
+# /cancel <job_id> — Cancel a specific queued job
+# ─────────────────────────────────────────────────────────
+async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not check_auth(update):
+        await update.message.reply_text("⛔ You are not authorized.")
+        return
+
+    if not context.args:
         await update.message.reply_text(
-            "⚠️ Some jobs failed. Use /status to check printer.",
+            "Usage: `/cancel JOB_ID`\n\nUse /queue to see job IDs.",
             parse_mode="Markdown"
         )
+        return
+
+    job_id = context.args[0].strip()
+    queue = get_queue()
+    success = queue.cancel(job_id)
+
+    if success:
+        await update.message.reply_text(f"✅ Job `{job_id}` cancelled.", parse_mode="Markdown")
+    else:
+        await update.message.reply_text(
+            f"⚠️ Could not cancel `{job_id}` — not found or already printing.",
+            parse_mode="Markdown"
+        )
+
+
+# ─────────────────────────────────────────────────────────
+# /cancelall — Cancel all queued jobs
+# ─────────────────────────────────────────────────────────
+async def cmd_cancelall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not check_auth(update):
+        await update.message.reply_text("⛔ You are not authorized.")
+        return
+
+    queue = get_queue()
+    count = queue.cancel_all()
+
+    if count:
+        await update.message.reply_text(f"✅ Cancelled {count} queued job(s).")
+    else:
+        await update.message.reply_text("📭 No queued jobs to cancel.")
+
+
+# ─────────────────────────────────────────────────────────
+# Callback handler for quantity confirmation
+# ─────────────────────────────────────────────────────────
+async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "confirm_print":
+        pending = context.user_data.pop("pending_print", None)
+        if not pending:
+            await query.edit_message_text("⚠️ No pending print job found.")
+            return
+        await query.edit_message_text("✅ Confirmed. Sending to printer...")
+        await _execute_print(pending, query, context)
+
+    elif query.data == "cancel_print":
+        context.user_data.pop("pending_print", None)
+        await query.edit_message_text("❌ Print cancelled.")
 
 
 # ─────────────────────────────────────────────────────────
@@ -397,9 +509,15 @@ def main():
     app.add_handler(CommandHandler("addproduct", cmd_addproduct))
     app.add_handler(CommandHandler("removeproduct", cmd_removeproduct))
     app.add_handler(CommandHandler("listproducts", cmd_listproducts))
+    app.add_handler(CommandHandler("queue", cmd_queue))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CommandHandler("cancelall", cmd_cancelall))
 
     # All non-command text messages → print requests
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_print_request))
+
+    # Inline button callbacks (quantity confirmation)
+    app.add_handler(CallbackQueryHandler(handle_confirmation))
 
     print("🤖 Bot is running...")
     app.run_polling()

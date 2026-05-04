@@ -358,12 +358,21 @@ header {
   padding: 10px 12px;
   margin-bottom: 6px;
   background: #fff;
+  position: relative;
 }
 .log-entry-top {
   display: flex; align-items: center;
   justify-content: space-between; gap: 8px;
   margin-bottom: 4px; flex-wrap: wrap;
 }
+.log-reprint {
+  width: 32px; height: 32px; flex-shrink: 0;
+  border: 1.5px solid #ddd; background: #fff;
+  color: #999; font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation; border-radius: 0;
+}
+.log-reprint:active { border-color: var(--saffron); color: var(--saffron); background: #fff8f0; }
 .log-product { font-weight: 700; font-size: 0.95rem; }
 .log-qty { font-size: 0.82rem; color: var(--muted); }
 .log-meta { font-size: 0.75rem; color: var(--muted); line-height: 1.6; }
@@ -381,6 +390,33 @@ header {
 .logs-filters select { flex: 1; min-width: 130px; font-size: 15px; }
 
 .logs-count { font-size: 0.75rem; color: var(--muted); text-align: right; margin-bottom: 0.5rem; }
+
+/* ── Queue ──────────────────────────────────── */
+.queue-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 2px solid #e5e5e5;
+  margin-bottom: 6px; background: #fff;
+}
+.queue-item.printing { border-color: var(--saffron); background: #fff8f0; }
+.queue-item.queued   { border-color: #ddd; }
+.queue-status {
+  font-size: 1.1rem; flex-shrink: 0;
+}
+.queue-info { flex: 1; min-width: 0; }
+.queue-product { font-weight: 700; font-size: 0.9rem; }
+.queue-detail { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+.queue-cancel {
+  width: 32px; height: 32px; flex-shrink: 0;
+  border: 1.5px solid #ddd; background: #fff;
+  color: #bbb; font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation; border-radius: 0;
+}
+.queue-cancel:active { border-color: var(--red); color: var(--red); background: var(--red-light); }
+.queue-cancel:disabled { opacity: 0.3; pointer-events: none; }
+.queue-empty {
+  text-align: center; color: var(--muted); padding: 2rem; font-size: 0.88rem;
+}
 
 /* ── Toast ──────────────────────────────────── */
 .toast {
@@ -606,12 +642,32 @@ header {
       </div>
     </div>
 
+    <!-- ── Tab: Queue ── -->
+    <div class="tab-page" id="tab-queue">
+      <div class="section-title">Print Queue</div>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+          <div class="logs-count" id="queueCount" style="margin:0;"></div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-small" onclick="loadQueue()" style="padding:6px 10px; font-size:0.75rem; background:var(--saffron);">↻ Refresh</button>
+            <button class="btn-small" onclick="cancelAllQueue()" style="padding:6px 10px; font-size:0.75rem; background:var(--red);">✕ Cancel All</button>
+          </div>
+        </div>
+        <div id="queueContainer">
+          <div class="queue-empty">Loading...</div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- end page -->
 
   <!-- Bottom nav -->
   <nav class="bottom-nav">
     <button class="nav-tab active" id="nav-print" onclick="switchTab('print')">
       <span class="nav-tab-icon">🖨️</span>Print
+    </button>
+    <button class="nav-tab" id="nav-queue" onclick="switchTab('queue')">
+      <span class="nav-tab-icon">📑</span>Queue
     </button>
     <button class="nav-tab" id="nav-products" onclick="switchTab('products')">
       <span class="nav-tab-icon">📦</span>Products
@@ -771,6 +827,7 @@ function switchTab(name) {
   document.getElementById(`nav-${name}`).classList.add('active');
   if (name === 'history') loadLogs();
   if (name === 'products') loadProducts();
+  if (name === 'queue') loadQueue();
 }
 
 // ── Status ───────────────────────────────────
@@ -934,6 +991,19 @@ async function submitPrint() {
   if (hasError) { showToast('Fix highlighted fields'); return; }
   if (!jobs.length) { showToast('Add at least one item'); return; }
 
+  // ── Quantity > 50 confirmation ──
+  const highQtyJobs = [];
+  rows.forEach(row => {
+    const id  = row.id.replace('row-','');
+    const prod = (document.getElementById(`prod-${id}`)?.value||'').trim().toUpperCase();
+    const qty  = parseInt(document.getElementById(`qty-${id}`)?.value||'0');
+    if (qty > 50) highQtyJobs.push(`${prod} × ${qty}`);
+  });
+  if (highQtyJobs.length) {
+    const msg = `⚠️ High quantity detected:\n\n${highQtyJobs.join('\n')}\n\nAre you sure you want to print this many stickers?`;
+    if (!confirm(msg)) return;
+  }
+
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
 
@@ -947,6 +1017,8 @@ async function submitPrint() {
     showResults(data.results);
     document.getElementById('jobRows').innerHTML='';
     rowId=0; addRow(); addRow();
+    // Auto-switch to queue tab so user can see their jobs
+    switchTab('queue');
   } catch { showToast('❌ Cannot reach server'); }
   finally { btn.disabled=false; content.innerHTML='🖨️ PRINT LABELS'; }
 }
@@ -1153,11 +1225,16 @@ async function loadLogs() {
     }
     document.getElementById('logsCount').textContent = `${data.logs.length} record${data.logs.length!==1?'s':''}`;
     if (!data.logs.length) { c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">No history yet.</div>'; return; }
-    c.innerHTML = data.logs.map(l=>`
+    c.innerHTML = data.logs.map(l=>{
+      const esc = s => (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      return `
       <div class="log-entry">
         <div class="log-entry-top">
-          <span class="log-product">${l.product}</span>
-          <span class="log-qty">× ${l.quantity} · ${l.weight}</span>
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap;">
+            <span class="log-product">${l.product}</span>
+            <span class="log-qty">× ${l.quantity} · ${l.weight}</span>
+          </div>
+          <button class="log-reprint" title="Reprint" onclick="reprintFromLog('${esc(l.product)}','${esc(l.weight)}','${esc(l.packed_on)}','${esc(l.best_before)}',${l.quantity})">🔄</button>
         </div>
         <div class="log-meta">
           <span class="badge badge-${l.source}">${l.source}</span>
@@ -1166,8 +1243,151 @@ async function loadLogs() {
           · Batch: <span class="log-batch">${l.batch_no}</span><br>
           Packed: ${l.packed_on} · Best Before: ${l.best_before}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch { c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">Failed to load.</div>'; }
+}
+
+// ── Queue ─────────────────────────────────────
+let queueRefreshTimer = null;
+
+async function loadQueue() {
+  const c = document.getElementById('queueContainer');
+  try {
+    const res = await apiFetch(`${API}/queue`);
+    if (!res) return;
+    const data = await res.json();
+    const jobs = data.jobs || [];
+
+    // Filter to active jobs (queued + printing)
+    const active = jobs.filter(j => j.status === 'queued' || j.status === 'printing');
+    document.getElementById('queueCount').textContent = `${active.length} active job${active.length !== 1 ? 's' : ''}`;
+
+    if (!active.length) {
+      c.innerHTML = '<div class="queue-empty">📭 Queue is empty — all jobs processed.</div>';
+      stopQueueRefresh();
+      return;
+    }
+
+    c.innerHTML = active.map(j => {
+      const isPrinting = j.status === 'printing';
+      const icon = isPrinting ? '🔄' : '⏳';
+      const cls  = isPrinting ? 'printing' : 'queued';
+      const canCancel = !isPrinting;
+      return `
+        <div class="queue-item ${cls}">
+          <div class="queue-status">${icon}</div>
+          <div class="queue-info">
+            <div class="queue-product">${j.product} × ${j.quantity}</div>
+            <div class="queue-detail">
+              ${j.weight ? j.weight + ' · ' : ''}${j.status}${j.batch_no ? ' · Batch: ' + j.batch_no : ''} · ${j.created_at}
+              ${j.source === 'telegram' ? ' · <span class="badge badge-telegram">telegram</span>' : ''}
+            </div>
+          </div>
+          <button class="queue-cancel" onclick="cancelQueueJob('${j.id}')" ${canCancel ? '' : 'disabled'} title="${isPrinting ? 'Currently printing' : 'Cancel'}">✕</button>
+        </div>`;
+    }).join('');
+
+    // Auto-refresh while queue has active jobs
+    startQueueRefresh();
+  } catch {
+    c.innerHTML = '<div class="queue-empty">⚠️ Failed to load queue.</div>';
+  }
+}
+
+function startQueueRefresh() {
+  if (queueRefreshTimer) return;
+  queueRefreshTimer = setInterval(() => {
+    // Only refresh if queue tab is active
+    if (document.getElementById('tab-queue')?.classList.contains('active')) {
+      loadQueue();
+    } else {
+      stopQueueRefresh();
+    }
+  }, 2000);
+}
+
+function stopQueueRefresh() {
+  if (queueRefreshTimer) {
+    clearInterval(queueRefreshTimer);
+    queueRefreshTimer = null;
+  }
+}
+
+async function cancelQueueJob(jobId) {
+  try {
+    const res = await apiFetch(`${API}/queue/cancel`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({job_id: jobId})
+    });
+    if (!res) return;
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`✅ Job cancelled`);
+    } else {
+      showToast(data.error || 'Cannot cancel');
+    }
+    loadQueue();
+  } catch { showToast('Failed to cancel'); }
+}
+
+async function cancelAllQueue() {
+  if (!confirm('Cancel all queued jobs?')) return;
+  try {
+    const res = await apiFetch(`${API}/queue/cancel-all`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'}
+    });
+    if (!res) return;
+    const data = await res.json();
+    showToast(`✅ ${data.message}`);
+    loadQueue();
+  } catch { showToast('Failed to cancel'); }
+}
+
+// ── Reprint from history ─────────────────────
+function reprintFromLog(product, weight, packedOn, bestBefore, quantity) {
+  // Switch to print tab
+  switchTab('print');
+
+  // Ensure product label mode
+  document.getElementById('stickerType').value = 'product';
+  onStickerTypeChange();
+
+  // Parse weight into numeric value for the weight input
+  const wtNum = parseFloat(weight) || '';
+
+  // Clear existing rows and add one pre-filled row
+  document.getElementById('jobRows').innerHTML = '';
+  document.getElementById('results').innerHTML = '';
+  rowId = 0;
+  addRow(product, String(quantity), String(wtNum));
+
+  // Set dates — convert DD/MM/YY to YYYY-MM-DD for date input
+  if (packedOn) {
+    const pd = parseLabelDate(packedOn);
+    if (pd) document.getElementById('packedDate').value = pd;
+  }
+  if (bestBefore) {
+    const bb = parseLabelDate(bestBefore);
+    if (bb) document.getElementById('bestBeforeDate').value = bb;
+  }
+
+  showToast('📋 Form loaded — edit and print');
+  // Scroll to top
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function parseLabelDate(dateStr) {
+  // Converts DD/MM/YY to YYYY-MM-DD for <input type="date">
+  if (!dateStr) return '';
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return '';
+  let [dd, mm, yy] = parts;
+  // Handle 2-digit year: assume 20xx
+  let yyyy = yy.length === 2 ? '20' + yy : yy;
+  return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
 }
 
 // ── Sticker type toggle ──────────────────────
@@ -1200,6 +1420,11 @@ async function submitIngredientsPrint() {
     document.getElementById('ingredientsQty')?.classList.add('error');
     showToast('Quantity must be 1–500');
     return;
+  }
+
+  // ── Quantity > 50 confirmation ──
+  if (qty > 50) {
+    if (!confirm(`⚠️ You are about to print ${qty} ingredients stickers. Are you sure?`)) return;
   }
 
   btn.disabled = true;

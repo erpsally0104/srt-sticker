@@ -7,6 +7,7 @@ from logger import log_print, get_logs, get_all_usernames
 from parser import parse_message
 from printer import print_label, get_printer_status
 from batch_manager import get_next_batch_number
+from print_queue import get_queue
 from product_manager import (
     add_product, remove_product, list_hotels,
     get_hotel_products, _load as load_products
@@ -134,6 +135,7 @@ def print_labels():
 
     results  = []
     username = request.username
+    queue    = get_queue()
 
     for job in jobs:
         line = job.get("line", "").strip()
@@ -144,31 +146,20 @@ def print_labels():
             results.append({"line": line, "success": False, "error": error})
             continue
 
-        batch_no = get_next_batch_number()
-        success  = print_label(req, batch_no)
-
-        if success:
-            log_print(
-                username    = username,
-                source      = "ui",
-                product     = req.product,
-                weight      = req.weight,
-                quantity    = req.quantity,
-                batch_no    = batch_no,
-                packed_on   = req.packed_on,
-                best_before = req.best_before
-            )
+        q_job = queue.add(req, username=username, source="ui")
 
         results.append({
             "line":        line,
-            "success":     success,
+            "success":     True,
+            "queued":      True,
+            "job_id":      q_job.id,
             "product":     req.product,
             "weight":      req.weight,
             "quantity":    req.quantity,
             "packed_on":   req.packed_on,
             "best_before": req.best_before,
-            "batch_no":    batch_no,
-            "error":       None if success else "Printer error"
+            "batch_no":    q_job.batch_no,
+            "error":       None,
         })
 
     return jsonify({"results": results})
@@ -197,6 +188,37 @@ def api_remove_product():
         return jsonify({"error": "Product required"}), 400
     result = remove_product(product, hotel)
     return jsonify({"message": result})
+
+
+# ── Queue endpoints ───────────────────────────────
+@app.route("/api/queue", methods=["GET"])
+@require_auth
+def get_print_queue():
+    queue = get_queue()
+    jobs = queue.list_all()
+    return jsonify({"jobs": jobs})
+
+
+@app.route("/api/queue/cancel", methods=["POST"])
+@require_auth
+def cancel_queue_job():
+    body   = request.get_json()
+    job_id = (body.get("job_id") or "").strip()
+    if not job_id:
+        return jsonify({"error": "job_id required"}), 400
+    queue   = get_queue()
+    success = queue.cancel(job_id)
+    if success:
+        return jsonify({"message": f"Job {job_id} cancelled"})
+    return jsonify({"error": "Job not found or already processing"}), 404
+
+
+@app.route("/api/queue/cancel-all", methods=["POST"])
+@require_auth
+def cancel_all_queue_jobs():
+    queue = get_queue()
+    count = queue.cancel_all()
+    return jsonify({"message": f"Cancelled {count} job(s)", "count": count})
 
 
 # ── Logs endpoint ────────────────────────────────
