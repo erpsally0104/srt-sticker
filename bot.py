@@ -9,6 +9,9 @@ from telegram.ext import (
     filters,
 )
 
+import os
+from dotenv import load_dotenv
+
 from user_manager import is_admin, is_authorized, add_user, remove_user, list_users
 from product_manager import add_product, remove_product, list_products, list_hotels
 from batch_manager import get_next_batch_number
@@ -17,11 +20,8 @@ from printer import print_label, get_printer_status
 from print_queue import get_queue
 from logger import log_print
 
-# ──────────────────────────────────────────────
-# PASTE YOUR TELEGRAM BOT TOKEN HERE
-# Get it from @BotFather on Telegram
-# ──────────────────────────────────────────────
-BOT_TOKEN = "8615569196:AAFd0jeJrkd1Vh_mVJRqsqZwizavRJfB5LI"
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
