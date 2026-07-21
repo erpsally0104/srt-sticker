@@ -722,6 +722,52 @@ header {
       </div>
     </div>
 
+    <!-- ── Tab: Settings ── -->
+    <div class="tab-page" id="tab-settings">
+      <div class="section-title">Print Settings</div>
+
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Label Size (both rolls)</div>
+        <div style="display:flex; gap:8px;">
+          <div style="flex:1;">
+            <label class="form-label" for="setLabelW">Width (mm)</label>
+            <input type="number" id="setLabelW" min="20" max="100" step="0.5" inputmode="decimal" oninput="updateDoubleWidthPreview()"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" for="setLabelH">Height (mm)</label>
+            <input type="number" id="setLabelH" min="20" max="100" step="0.5" inputmode="decimal"/>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">1-up Roll (single)</div>
+        <label class="form-label" for="setSingleVGap">Vertical gap between labels (mm)</label>
+        <input type="number" id="setSingleVGap" min="0" max="20" step="0.5" inputmode="decimal"/>
+      </div>
+
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">2-up Roll (double)</div>
+        <label class="form-label" for="setDoubleVGap">Vertical gap between rows (mm)</label>
+        <input type="number" id="setDoubleVGap" min="0" max="20" step="0.5" inputmode="decimal"/>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <div style="flex:1;">
+            <label class="form-label" for="setDoubleGap">Gap between stickers (mm)</label>
+            <input type="number" id="setDoubleGap" min="0" max="30" step="0.5" inputmode="decimal" oninput="updateDoubleWidthPreview()"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" for="setDoubleMargin">Side margin, each edge (mm)</label>
+            <input type="number" id="setDoubleMargin" min="0" max="30" step="0.5" inputmode="decimal" oninput="updateDoubleWidthPreview()"/>
+          </div>
+        </div>
+        <div id="doubleWidthPreview" class="print-summary" style="margin-top:12px;"></div>
+      </div>
+
+      <button class="btn-primary" id="saveSettingsBtn" onclick="saveGeometry()" style="margin-top:0.25rem;">
+        <span id="saveSettingsContent">💾 SAVE SETTINGS</span>
+      </button>
+    </div>
+
   </div><!-- end page -->
 
   <!-- Bottom nav -->
@@ -737,6 +783,9 @@ header {
     </button>
     <button class="nav-tab" id="nav-history" onclick="switchTab('history')">
       <span class="nav-tab-icon">📋</span>History
+    </button>
+    <button class="nav-tab" id="nav-settings" onclick="switchTab('settings')">
+      <span class="nav-tab-icon">⚙️</span>Settings
     </button>
   </nav>
 
@@ -852,7 +901,55 @@ async function loadSettings() {
     if (data.roll_type) document.getElementById('rollType').value = data.roll_type;
     updateRollHint();
     updateSummary();
+    applySettingsToForm(data);
   } catch {}
+}
+
+function applySettingsToForm(s) {
+  if (!s) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+  set('setLabelW', s.label_width_mm);
+  set('setLabelH', s.label_height_mm);
+  set('setSingleVGap', s.single_vgap_mm);
+  set('setDoubleVGap', s.double_vgap_mm);
+  set('setDoubleGap', s.double_gap_mm);
+  set('setDoubleMargin', s.double_margin_mm);
+  updateDoubleWidthPreview();
+}
+
+function updateDoubleWidthPreview() {
+  const w = parseFloat(document.getElementById('setLabelW')?.value)      || 0;
+  const g = parseFloat(document.getElementById('setDoubleGap')?.value)   || 0;
+  const m = parseFloat(document.getElementById('setDoubleMargin')?.value)|| 0;
+  const total = Math.round((m * 2 + w * 2 + g) * 100) / 100;
+  const el = document.getElementById('doubleWidthPreview');
+  if (el) el.innerHTML = `2-up media width: <strong>${total} mm</strong> &nbsp;(${m} + ${w} + ${g} + ${w} + ${m})`;
+}
+
+async function saveGeometry() {
+  const btn     = document.getElementById('saveSettingsBtn');
+  const content = document.getElementById('saveSettingsContent');
+  const payload = {
+    label_width_mm:   parseFloat(document.getElementById('setLabelW').value),
+    label_height_mm:  parseFloat(document.getElementById('setLabelH').value),
+    single_vgap_mm:   parseFloat(document.getElementById('setSingleVGap').value),
+    double_vgap_mm:   parseFloat(document.getElementById('setDoubleVGap').value),
+    double_gap_mm:    parseFloat(document.getElementById('setDoubleGap').value),
+    double_margin_mm: parseFloat(document.getElementById('setDoubleMargin').value),
+  };
+  if (Object.values(payload).some(v => isNaN(v))) { showToast('Fill all fields with numbers'); return; }
+
+  btn.disabled = true; content.innerHTML = '<div class="spinner"></div>';
+  try {
+    const res  = await apiFetch(`${API}/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = res ? await res.json() : null;
+    if (res && res.ok) { applySettingsToForm(data); updateSummary(); showToast('✅ Settings saved'); }
+    else { showToast((data && data.error) || 'Could not save settings'); }
+  } catch { showToast('Could not save settings'); }
+  finally { btn.disabled = false; content.innerHTML = '💾 SAVE SETTINGS'; }
 }
 
 async function onRollTypeChange() {
@@ -924,6 +1021,7 @@ function switchTab(name) {
   if (name === 'history') loadLogs();
   if (name === 'products') loadProducts();
   if (name === 'queue') loadQueue();
+  if (name === 'settings') loadSettings();
 }
 
 // ── Status ───────────────────────────────────

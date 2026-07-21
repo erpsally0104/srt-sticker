@@ -3,29 +3,59 @@ from PIL import Image, ImageDraw, ImageFont
 import qrcode
 import textwrap
 from parser import PrintRequest
+from settings_manager import get_settings
 
 PRINTER_NAME = "TSC TE244"
 
 DPI = 203
 
 # ── Label / media dimensions ──────────────────
-LABEL_W_MM = 50
-LABEL_H_MM = 40          # sticker height (updated from 38mm)
-H_GAP_MM   = 5           # horizontal gap between the two columns on a 2-up roll
-V_GAP_MM   = 2           # vertical gap between rows (TSPL GAP)
+LABEL_W_MM     = 50
+LABEL_H_MM     = 40      # sticker height (updated from 38mm)
+H_GAP_MM       = 1       # gap between the two stickers on a 2-up roll
+EDGE_MARGIN_MM = 2       # blank margin on the left/right edges of a 2-up roll
+V_GAP_MM       = 2       # vertical gap between rows (TSPL GAP)
 
 
 def _mm_to_px(mm) -> int:
     return int(round(mm / 25.4 * DPI))
 
 
-LABEL_W_PX = _mm_to_px(LABEL_W_MM)   # ~400px
-LABEL_H_PX = _mm_to_px(LABEL_H_MM)   # ~320px
-H_GAP_PX   = _mm_to_px(H_GAP_MM)     # ~40px
+LABEL_W_PX     = _mm_to_px(LABEL_W_MM)      # ~400px
+LABEL_H_PX     = _mm_to_px(LABEL_H_MM)      # ~320px
+H_GAP_PX       = _mm_to_px(H_GAP_MM)        # ~8px
+EDGE_MARGIN_PX = _mm_to_px(EDGE_MARGIN_MM)  # ~16px
 
 # ── Double (2-up) media dimensions ────────────
-DOUBLE_W_MM = LABEL_W_MM * 2 + H_GAP_MM   # 105mm total
-DOUBLE_W_PX = LABEL_W_PX * 2 + H_GAP_PX
+# Layout across the roll: [margin][label][gap][label][margin]
+DOUBLE_W_MM = EDGE_MARGIN_MM * 2 + LABEL_W_MM * 2 + H_GAP_MM   # 105mm total
+DOUBLE_W_PX = EDGE_MARGIN_PX * 2 + LABEL_W_PX * 2 + H_GAP_PX
+
+
+def _apply_geometry():
+    """
+    Refresh module-level geometry from user settings before a print.
+    Safe because all rendering/printing happens on the single queue-worker thread.
+    The vertical gap depends on the currently selected roll type.
+    """
+    global LABEL_W_MM, LABEL_H_MM, H_GAP_MM, EDGE_MARGIN_MM, V_GAP_MM
+    global LABEL_W_PX, LABEL_H_PX, H_GAP_PX, EDGE_MARGIN_PX, DOUBLE_W_MM, DOUBLE_W_PX
+
+    s = get_settings()
+    roll = s.get("roll_type", "single")
+
+    LABEL_W_MM     = s.get("label_width_mm", 50)
+    LABEL_H_MM     = s.get("label_height_mm", 40)
+    H_GAP_MM       = s.get("double_gap_mm", 1)
+    EDGE_MARGIN_MM = s.get("double_margin_mm", 2)
+    V_GAP_MM       = s.get("double_vgap_mm", 2) if roll == "double" else s.get("single_vgap_mm", 2)
+
+    LABEL_W_PX     = _mm_to_px(LABEL_W_MM)
+    LABEL_H_PX     = _mm_to_px(LABEL_H_MM)
+    H_GAP_PX       = _mm_to_px(H_GAP_MM)
+    EDGE_MARGIN_PX = _mm_to_px(EDGE_MARGIN_MM)
+    DOUBLE_W_MM    = EDGE_MARGIN_MM * 2 + LABEL_W_MM * 2 + H_GAP_MM
+    DOUBLE_W_PX    = EDGE_MARGIN_PX * 2 + LABEL_W_PX * 2 + H_GAP_PX
 
 FONT_BRITANNIC = r"C:\Windows\Fonts\britanic.ttf"
 FONT_ARIAL_NB  = r"C:\Windows\Fonts\ARIALNB.TTF"
@@ -72,7 +102,9 @@ def build_label_image(req, batch_no):
     img  = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
     draw = ImageDraw.Draw(img)
 
-    font_product = get_font(FONT_BRITANNIC, 40)
+    # Product name: 42px normally, 40px for long names (> 15 chars) to reduce overflow
+    product_font_size = 40 if len(req.product) > 15 else 42
+    font_product = get_font(FONT_BRITANNIC, product_font_size)
     font_weight  = get_font(FONT_ARIAL_NB, 30, FONT_ARIAL_N)
     font_dates   = get_font(FONT_ARIAL_NB, 28, FONT_ARIAL_N)
     font_batch   = get_font(FONT_ARIAL_NB, 22, FONT_ARIAL_N)  # smaller to save space
@@ -95,7 +127,7 @@ def build_label_image(req, batch_no):
 
     # ── Calculate total content height for vertical centering ──
     # Top section lines
-    LINE_PRODUCT = 46   # font 40 height approx
+    LINE_PRODUCT = product_font_size + 6   # approx text height for the chosen size
     LINE_WEIGHT  = 36   # font 30 height approx
     LINE_DATE    = 30   # font 28 height approx
     LINE_BATCH   = 26   # font 22 height approx (batch only)
@@ -238,6 +270,7 @@ def build_ingredients_label_image(req):
 
 def render_label(req, batch_no: str = ""):
     """Render a single label (product or ingredients) to a PIL image."""
+    _apply_geometry()
     if req.label_type == "ingredients":
         return build_ingredients_label_image(req)
     return build_label_image(req, batch_no)
@@ -290,12 +323,15 @@ def _bitmap_block(img, quantity: int = 1) -> bytes:
 
 
 def _compose_double_row(left_img, right_img=None):
-    """Place one or two labels side by side on a 2-up (105mm) canvas."""
+    """
+    Place one or two labels on a 2-up (105mm) canvas.
+    Layout across the roll: [2mm margin][left label][1mm gap][right label][2mm margin].
+    """
     canvas = Image.new("RGB", (DOUBLE_W_PX, LABEL_H_PX), color="white")
     if left_img is not None:
-        canvas.paste(left_img, (0, 0))
+        canvas.paste(left_img, (EDGE_MARGIN_PX, 0))
     if right_img is not None:
-        canvas.paste(right_img, (LABEL_W_PX + H_GAP_PX, 0))
+        canvas.paste(right_img, (EDGE_MARGIN_PX + LABEL_W_PX + H_GAP_PX, 0))
     return canvas
 
 
@@ -336,6 +372,7 @@ def print_double_rows(rows) -> bool:
     """
     if not rows:
         return True
+    _apply_geometry()
     try:
         tspl = _tspl_header(DOUBLE_W_MM, LABEL_H_MM)
         for left_img, right_img in rows:

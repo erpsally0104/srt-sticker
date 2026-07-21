@@ -14,7 +14,7 @@ Flat, single-directory Python project. All modules live in the repo root; there 
 | `batch_manager.py` | `get_next_batch_number()` — daily-resetting sequential batch numbers. |
 | `product_manager.py` | CRUD over `products.json`, hotel-scoped, with flat→grouped auto-migration. |
 | `user_manager.py` | Telegram auth over `users.json` (admin + authorized users). |
-| `settings_manager.py` | App settings over `settings.json`, currently the printer `roll_type` (`single` / `double`). |
+| `settings_manager.py` | App settings over `settings.json`: printer `roll_type` (`single` / `double`) and print geometry (label size, gaps, margins) with validation. |
 | `auth.py` | Web UI auth: SQLite users, bcrypt, JWT access/refresh tokens. |
 | `logger.py` | Print audit log in the `print_logs` SQLite table. |
 | `index.html`, `ui.html`, `sw.js`, `manifest.json`, `icon.png` | PWA web front-end assets. |

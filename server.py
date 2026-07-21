@@ -12,7 +12,7 @@ from product_manager import (
     add_product, remove_product, list_hotels,
     get_hotel_products, _load as load_products
 )
-from settings_manager import get_settings, set_roll_type
+from settings_manager import get_settings, set_roll_type, set_geometry, GEOMETRY_DEFAULTS
 
 app = Flask(__name__)
 CORS(app)
@@ -113,12 +113,21 @@ def get_app_settings():
 @app.route("/api/settings", methods=["POST"])
 @require_auth
 def update_app_settings():
-    body      = request.get_json() or {}
-    roll_type = (body.get("roll_type") or "").strip().lower()
-    result    = set_roll_type(roll_type)
-    if result is None:
-        return jsonify({"error": "Invalid roll_type (use 'single' or 'double')"}), 400
-    return jsonify({"message": f"Roll type set to {result}", "roll_type": result})
+    body = request.get_json() or {}
+
+    # Roll type (optional)
+    if "roll_type" in body:
+        if set_roll_type(body.get("roll_type")) is None:
+            return jsonify({"error": "Invalid roll_type (use 'single' or 'double')"}), 400
+
+    # Print geometry (optional)
+    geo_updates = {k: body[k] for k in body if k in GEOMETRY_DEFAULTS}
+    if geo_updates:
+        applied, err = set_geometry(geo_updates)
+        if err:
+            return jsonify({"error": err}), 400
+
+    return jsonify(get_settings())
 
 
 @app.route("/api/products", methods=["GET"])
