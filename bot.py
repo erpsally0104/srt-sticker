@@ -19,6 +19,7 @@ from parser import parse_message
 from printer import print_label, get_printer_status
 from print_queue import get_queue
 from logger import log_print
+from settings_manager import get_roll_type, set_roll_type
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -96,6 +97,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`Ingredients text ;; i 5`\n\n"
         "*General:*\n"
         "/status — Check printer status\n"
+        "/rolltype — View/set roll type (single or 2-up)\n"
         "/queue — View print queue\n"
         "/cancel ID — Cancel a queued job\n"
         "/cancelall — Cancel all queued jobs\n"
@@ -128,6 +130,43 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     status = get_printer_status()
     await update.message.reply_text(f"🖨️ *Printer Status*\n\n{status}", parse_mode="Markdown")
+
+
+# ─────────────────────────────────────────────────────────
+# /rolltype [single|double]
+# View or set the loaded roll type (which sticker roll is in the printer)
+# ─────────────────────────────────────────────────────────
+async def cmd_rolltype(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not check_auth(update):
+        await update.message.reply_text("⛔ You are not authorized.")
+        return
+
+    labels = {
+        "single": "Single (one 50×40mm label per row)",
+        "double": "Double 2-up (two 50×40mm labels side by side)",
+    }
+
+    if not context.args:
+        current = get_roll_type()
+        await update.message.reply_text(
+            f"🧻 *Roll Type:* {labels.get(current, current)}\n\n"
+            "Change it with:\n`/rolltype single`\n`/rolltype double`",
+            parse_mode="Markdown"
+        )
+        return
+
+    result = set_roll_type(context.args[0])
+    if result is None:
+        await update.message.reply_text(
+            "⚠️ Invalid roll type. Use `/rolltype single` or `/rolltype double`.",
+            parse_mode="Markdown"
+        )
+        return
+
+    await update.message.reply_text(
+        f"✅ Roll type set to *{labels.get(result, result)}*.",
+        parse_mode="Markdown"
+    )
 
 
 # ─────────────────────────────────────────────────────────
@@ -350,8 +389,8 @@ async def _execute_print(requests, update_or_query, context):
     queue = get_queue()
     queued_lines = []
 
-    for req in requests:
-        q_job = queue.add(req, username=username, source="telegram")
+    q_jobs = queue.add_batch(requests, username=username, source="telegram")
+    for req, q_job in zip(requests, q_jobs):
         if req.label_type == "ingredients":
             queued_lines.append(
                 f"📋 *Ingredients sticker* — {req.quantity} sticker(s) | Job: `{q_job.id}`"
@@ -503,6 +542,7 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("rolltype", cmd_rolltype))
     app.add_handler(CommandHandler("adduser", cmd_adduser))
     app.add_handler(CommandHandler("removeuser", cmd_removeuser))
     app.add_handler(CommandHandler("listusers", cmd_listusers))

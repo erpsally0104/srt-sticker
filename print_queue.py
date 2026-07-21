@@ -14,9 +14,10 @@ from datetime import datetime
 from typing import Optional
 
 from parser import PrintRequest
-from printer import print_label
+from printer import print_label, render_label, print_double_rows
 from batch_manager import get_next_batch_number
 from logger import log_print
+from settings_manager import get_roll_type
 
 
 @dataclass
@@ -72,6 +73,28 @@ class PrintQueue:
             self._jobs[job.id] = job
         return job
 
+    def add_batch(self, reqs, username: str, source: str = "ui") -> list:
+        """
+        Add multiple print requests atomically (under a single lock) so that a
+        multi-line submission is queued together and paired together in 2-up mode.
+        Returns the list of created jobs in the same order as `reqs`.
+        """
+        jobs = []
+        with self._lock:
+            for req in reqs:
+                batch_no = get_next_batch_number() if req.label_type != "ingredients" else ""
+                job = QueueJob(
+                    id=uuid.uuid4().hex[:8],
+                    req=req,
+                    batch_no=batch_no,
+                    username=username,
+                    source=source,
+                    created_at=datetime.now().strftime("%H:%M:%S"),
+                )
+                self._jobs[job.id] = job
+                jobs.append(job)
+        return jobs
+
     def list_jobs(self) -> list:
         """Return all non-terminal jobs (queued + printing)."""
         with self._lock:
@@ -108,44 +131,111 @@ class PrintQueue:
         return count
 
     def _process_loop(self):
-        """Background worker that processes jobs one at a time."""
+        """
+        Background worker.
+
+        In 'single' mode each job is printed on its own (one label per row,
+        using the printer's native copy count). In 'double' mode all currently
+        queued labels are flattened into a single FIFO sequence and printed two
+        side by side per row; an odd final label prints alone (right column blank).
+        """
         while True:
-            job = self._next_queued()
-            if job is None:
+            if get_roll_type() == "double":
+                did_work = self._process_double_batch()
+            else:
+                did_work = self._process_single_next()
+            if not did_work:
                 time.sleep(0.3)
-                continue
 
-            with self._lock:
-                job.status = "printing"
+    def _log_job(self, job):
+        """Log a completed product job (ingredients labels are not logged)."""
+        if job.req.label_type != "ingredients":
+            log_print(
+                username=job.username,
+                source=job.source,
+                product=job.req.product,
+                weight=job.req.weight,
+                quantity=job.req.quantity,
+                batch_no=job.batch_no,
+                packed_on=job.req.packed_on,
+                best_before=job.req.best_before,
+            )
 
+    def _process_single_next(self) -> bool:
+        """Print the next queued job on a single-label-per-row roll."""
+        job = self._next_queued()
+        if job is None:
+            return False
+
+        with self._lock:
+            job.status = "printing"
+
+        try:
+            success = print_label(job.req, job.batch_no)
+        except Exception as e:
+            success = False
+            job.error = str(e)
+
+        with self._lock:
+            if success:
+                job.status = "done"
+                self._log_job(job)
+            else:
+                job.status = "failed"
+                if not job.error:
+                    job.error = "Printer error"
+
+        self._cleanup()
+        return True
+
+    def _process_double_batch(self) -> bool:
+        """Print all currently-queued labels 2-up (side by side)."""
+        # Grab all queued jobs (FIFO) and mark them printing.
+        with self._lock:
+            jobs = [j for j in self._jobs.values() if j.status == "queued"]
+            for j in jobs:
+                j.status = "printing"
+
+        if not jobs:
+            return False
+
+        # Render each job's label once, then expand into individual sticker units.
+        units = []            # one image per physical sticker
+        failed_ids = set()
+        for job in jobs:
             try:
-                success = print_label(job.req, job.batch_no)
+                img = render_label(job.req, job.batch_no)
             except Exception as e:
-                success = False
                 job.error = str(e)
+                failed_ids.add(job.id)
+                continue
+            units.extend([img] * job.req.quantity)
 
-            with self._lock:
-                if success:
+        # Pair units two-per-row; odd leftover prints alone (right column blank).
+        rows = []
+        for i in range(0, len(units), 2):
+            left = units[i]
+            right = units[i + 1] if i + 1 < len(units) else None
+            rows.append((left, right))
+
+        success = print_double_rows(rows)
+
+        with self._lock:
+            for job in jobs:
+                if job.id in failed_ids:
+                    job.status = "failed"
+                    if not job.error:
+                        job.error = "Render error"
+                elif success:
                     job.status = "done"
-                    # Log successful prints
-                    if job.req.label_type != "ingredients":
-                        log_print(
-                            username=job.username,
-                            source=job.source,
-                            product=job.req.product,
-                            weight=job.req.weight,
-                            quantity=job.req.quantity,
-                            batch_no=job.batch_no,
-                            packed_on=job.req.packed_on,
-                            best_before=job.req.best_before,
-                        )
+                    self._log_job(job)
                 else:
                     job.status = "failed"
                     if not job.error:
                         job.error = "Printer error"
 
-            # Clean up old terminal jobs (keep last 50)
-            self._cleanup()
+        self._cleanup()
+        return True
 
     def _next_queued(self) -> Optional[QueueJob]:
         """Get the next queued job (FIFO)."""

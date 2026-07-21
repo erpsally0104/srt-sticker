@@ -475,6 +475,58 @@ header {
 }
 .btn-add-row:active { border-color: var(--saffron); color: var(--saffron); background: #fff8f4; }
 
+/* ── Roll hint ───────────────────────────────── */
+.roll-hint {
+  margin-top: 8px; padding: 8px 10px;
+  background: #fff8f0; border: 2px solid var(--saffron);
+  font-size: 0.78rem; color: var(--saffron-dark); line-height: 1.4;
+}
+
+/* ── Print summary ───────────────────────────── */
+.print-summary {
+  margin-top: 0.75rem; padding: 8px 10px;
+  background: var(--paper); border: 2px dashed #ccc;
+  font-size: 0.85rem; color: var(--ink); text-align: center;
+}
+.print-summary.empty { color: var(--muted); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: 2px 2px 0 var(--ink); }
+.btn-primary:disabled:active { transform: none; box-shadow: 2px 2px 0 var(--ink); }
+
+/* ── Combo keyboard highlight ────────────────── */
+.combo-option.active, .combo-new.active { background: #fff3e0; }
+
+/* ── Row clone button ────────────────────────── */
+.job-card-clone {
+  position: absolute; top: 8px; right: 44px;
+  width: 32px; height: 32px;
+  border: 1.5px solid #ddd; background: #fff;
+  color: #bbb; font-size: 0.95rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.job-card-clone:active { border-color: var(--saffron); color: var(--saffron); background: #fff8f0; }
+
+/* ── Quantity presets ────────────────────────── */
+.qty-presets { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.qty-preset {
+  padding: 5px 10px; font-size: 0.75rem; font-weight: 600;
+  border: 1.5px solid #ccc; background: #fff; color: var(--muted);
+  cursor: pointer; touch-action: manipulation;
+  font-family: 'DM Sans', sans-serif;
+}
+.qty-preset:active { border-color: var(--saffron); color: var(--saffron-dark); background: #fff8f0; }
+
+/* ── Focus visibility (a11y) ─────────────────── */
+.job-card-remove:focus-visible,
+.job-card-clone:focus-visible,
+.qty-preset:focus-visible,
+.log-reprint:focus-visible,
+.queue-cancel:focus-visible,
+.product-item-edit:focus-visible,
+.product-item-remove:focus-visible {
+  outline: 3px solid var(--saffron); outline-offset: 1px;
+}
+
 @media (min-width: 600px) {
   .brand-name { font-size: 1.4rem; }
   .brand-sub  { font-size: 0.7rem; }
@@ -567,13 +619,24 @@ header {
               color:var(--ink); outline:none; border-radius:0; -webkit-appearance:none; appearance:none;"/>
           </div>
         </div>
+        <div style="margin-top:8px;">
+          <label class="form-label" style="margin-bottom:8px;">Roll Type (loaded in printer)</label>
+          <select id="rollType" onchange="onRollTypeChange()" aria-label="Roll type loaded in printer">
+            <option value="single" selected>🏷️ Single — one 50×40mm per row</option>
+            <option value="double">🏷️🏷️ Double 2-up — two side by side</option>
+          </select>
+          <div id="rollHint" class="roll-hint" style="display:none;">
+            🏷️🏷️ 2-up roll active: labels print two side by side. An odd final label prints alone (right column blank).
+          </div>
+        </div>
       </div>
 
       <!-- Product label UI -->
       <div class="card" id="productSection">
         <div id="jobRows"></div>
-        <button class="btn-add-row" onclick="addRow()">+ Add item</button>
-        <button class="btn-primary" id="printBtn" onclick="submitPrint()" style="margin-top:1rem;">
+        <button class="btn-add-row" onclick="addRow()" aria-label="Add another item">+ Add item</button>
+        <div id="printSummary" class="print-summary empty" aria-live="polite"></div>
+        <button class="btn-primary" id="printBtn" onclick="submitPrint()" style="margin-top:0.75rem;" disabled>
           <span id="printBtnContent">🖨️ PRINT LABELS</span>
         </button>
         <button class="btn-secondary" onclick="resetAll()">↺ RESET</button>
@@ -773,11 +836,43 @@ function doLogout() {
   showToast('Logged out');
 }
 
-function initApp() {
-  addRow(); addRow();
+async function initApp() {
   checkStatus();
-  loadProducts();
-  setDefaultDates();
+  await loadProducts();
+  loadSettings();
+  restoreDraftOrDefault();
+}
+
+// ── Roll type setting ────────────────────────
+async function loadSettings() {
+  try {
+    const res = await apiFetch(`${API}/settings`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    if (data.roll_type) document.getElementById('rollType').value = data.roll_type;
+    updateRollHint();
+    updateSummary();
+  } catch {}
+}
+
+async function onRollTypeChange() {
+  const val = document.getElementById('rollType').value;
+  updateRollHint();
+  updateSummary();
+  try {
+    const res = await apiFetch(`${API}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roll_type: val })
+    });
+    if (res && res.ok) {
+      showToast(val === 'double' ? 'Roll set to 2-up (side by side)' : 'Roll set to single');
+    } else {
+      showToast('Could not update roll type');
+    }
+  } catch {
+    showToast('Could not update roll type');
+  }
 }
 
 function setDefaultDates() {
@@ -817,6 +912,7 @@ function onPackedDateChange() {
   bb.setMonth(bb.getMonth() + 3);
   const bbEl = document.getElementById('bestBeforeDate');
   if (bbEl) bbEl.value = formatDateInput(bb);
+  saveDraft();
 }
 
 // ── Tabs ─────────────────────────────────────
@@ -840,9 +936,10 @@ async function checkStatus() {
     if (!res) return;
     const data = await res.json();
     const ok   = data.status.includes('online');
+    printerOnline    = ok;
     dot.className    = 'status-dot ' + (ok ? 'online' : 'offline');
     text.textContent = ok ? 'Online' : 'Offline';
-  } catch { dot.className='status-dot offline'; text.textContent='Offline'; }
+  } catch { printerOnline=false; dot.className='status-dot offline'; text.textContent='Offline'; }
 }
 
 // ── Job rows ─────────────────────────────────
@@ -850,6 +947,11 @@ let rowId = 0;
 let products = [];       // current hotel's products for combo dropdown
 let allByHotel = {};     // { hotel: [{name, weight}, ...] }
 let hotels = [];         // ['general', ...]
+let printerOnline = null; // null=unknown, true/false from checkStatus
+let comboState = {};     // { [rowId]: { items, hasNew, active, val } }
+const DRAFT_KEY = 'srt_print_draft';
+
+const escJs = s => (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
 function getUOM(val) {
   const n = parseFloat(val);
@@ -889,42 +991,136 @@ function addRow(product='', qty='', weight='') {
   const uom = weight ? getUOM(parseFloat(weight)) : {label:'—', cls:''};
 
   div.innerHTML = `
-    <button class="job-card-remove" onclick="removeRow(${id})">×</button>
+    <button class="job-card-clone" onclick="cloneRow(${id})" aria-label="Duplicate this item" title="Duplicate item">⧉</button>
+    <button class="job-card-remove" onclick="removeRow(${id})" aria-label="Remove this item" title="Remove item">×</button>
     <div class="combo-wrap" style="margin-bottom:8px;">
       <input type="text" id="prod-${id}" placeholder="Product name" value="${product}"
-        style="text-transform:uppercase; padding-right:32px;"
+        style="text-transform:uppercase; padding-right:82px;"
+        aria-label="Product name"
         oninput="onComboInput(${id})" onfocus="openCombo(${id})"
-        onblur="onComboBlur(${id})" autocomplete="off"/>
+        onblur="onComboBlur(${id})" onkeydown="onComboKey(event, ${id})" autocomplete="off"/>
       <div class="combo-dropdown" id="combo-dd-${id}"></div>
     </div>
     <div class="job-row-fields">
-      <input type="number" id="qty-${id}" placeholder="Quantity" min="1" max="500" value="${qty}"/>
-      <input type="text"   id="wt-${id}"  placeholder="Weight" value="${weight}" oninput="updateUOM(${id})"/>
-      <div class="uom-badge ${uom.cls}" id="uom-${id}">${uom.label||'—'}</div>
+      <input type="number" id="qty-${id}" placeholder="Quantity" min="1" max="500" value="${qty}"
+        aria-label="Quantity" oninput="onQtyInput(${id})" onkeydown="onQtyKey(event, ${id})"/>
+      <input type="text"   id="wt-${id}"  placeholder="Weight" value="${weight}"
+        aria-label="Weight" oninput="onWeightInput(${id})"/>
+      <div class="uom-badge ${uom.cls}" id="uom-${id}" aria-hidden="true">${uom.label||'—'}</div>
+    </div>
+    <div class="qty-presets">
+      <button type="button" class="qty-preset" onclick="bumpQty(${id},10)" aria-label="Add 10 to quantity">+10</button>
+      <button type="button" class="qty-preset" onclick="bumpQty(${id},25)" aria-label="Add 25 to quantity">+25</button>
+      <button type="button" class="qty-preset" onclick="bumpQty(${id},50)" aria-label="Add 50 to quantity">+50</button>
+      <button type="button" class="qty-preset" onclick="setQty(${id},100)" aria-label="Set quantity to 100">100</button>
     </div>
   `;
   document.getElementById('jobRows').appendChild(div);
   renderCombo(id, '');
+  return id;
 }
 
 function removeRow(id) {
   const rows = document.querySelectorAll('.job-card');
   if (rows.length <= 1) return;
   document.getElementById(`row-${id}`)?.remove();
+  delete comboState[id];
+  ensureTrailingRow();
+  refreshAfterChange();
+}
+
+function cloneRow(id) {
+  const prod = document.getElementById(`prod-${id}`)?.value || '';
+  const qty  = document.getElementById(`qty-${id}`)?.value || '';
+  const wt   = document.getElementById(`wt-${id}`)?.value || '';
+  const newId = addRow(prod, qty, wt);
+  // Place the clone directly after the source row
+  const src   = document.getElementById(`row-${id}`);
+  const clone = document.getElementById(`row-${newId}`);
+  if (src && clone) src.parentNode.insertBefore(clone, src.nextSibling);
+  if (wt) updateUOM(newId);
+  ensureTrailingRow();
+  refreshAfterChange();
 }
 
 function renderCombo(id, filter) {
   const dd  = document.getElementById(`combo-dd-${id}`);
+  if (!dd) return;
   const val = (document.getElementById(`prod-${id}`)?.value||'').toUpperCase().trim();
-  const filtered   = products.filter(p => p.name.toUpperCase().includes(filter.toUpperCase()));
+  const filtered   = products.filter(p => p.name.toUpperCase().includes((filter||'').toUpperCase()));
   const exactMatch = products.some(p => p.name.toUpperCase() === val);
-  let html = filtered.map(p => `
-    <div class="combo-option" onmousedown="selectOption(${id},'${p.name}',${parseFloat(p.weight)||''})">
+  const hasNew     = !!(val && !exactMatch);
+  const prev       = comboState[id] || { active: -1 };
+  const optionCount = filtered.length + (hasNew ? 1 : 0);
+  let active = prev.active;
+  if (active >= optionCount) active = optionCount - 1;
+  comboState[id] = { items: filtered, hasNew, active, val };
+
+  let html = filtered.map((p, i) => `
+    <div class="combo-option ${i===active?'active':''}" data-idx="${i}"
+      onmousedown="selectOption(${id},'${escJs(p.name)}',${parseFloat(p.weight)||''})">
       <span>${p.name}</span><span class="combo-option-weight">${p.weight}</span>
     </div>`).join('');
-  if (val && !exactMatch)
-    html += `<div class="combo-new" onmousedown="addNewProduct(${id})">+ Add "${val}" to list</div>`;
+  if (hasNew) {
+    const newIdx = filtered.length;
+    html += `<div class="combo-new ${newIdx===active?'active':''}" data-idx="${newIdx}" onmousedown="addNewProduct(${id})">+ Add "${val}" to list</div>`;
+  }
   dd.innerHTML = html || '<div class="combo-option" style="color:#aaa;pointer-events:none;">No products found</div>';
+}
+
+function currentFilter(id) {
+  return (document.getElementById(`prod-${id}`)?.value||'').trim();
+}
+
+function scrollActive(id) {
+  const dd = document.getElementById(`combo-dd-${id}`);
+  const el = dd?.querySelector('.combo-option.active, .combo-new.active');
+  el?.scrollIntoView({ block: 'nearest' });
+}
+
+function onComboKey(e, id) {
+  const dd    = document.getElementById(`combo-dd-${id}`);
+  const st    = comboState[id];
+  const open  = dd?.classList.contains('open');
+  const count = st ? (st.items.length + (st.hasNew ? 1 : 0)) : 0;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (!open) openCombo(id);
+    if (comboState[id]) {
+      comboState[id].active = Math.min((comboState[id].active < 0 ? -1 : comboState[id].active) + 1, count - 1);
+      renderCombo(id, currentFilter(id));
+      scrollActive(id);
+    }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (comboState[id]) {
+      comboState[id].active = Math.max(comboState[id].active - 1, 0);
+      renderCombo(id, currentFilter(id));
+      scrollActive(id);
+    }
+  } else if (e.key === 'Enter') {
+    if (open && st && st.active >= 0) {
+      e.preventDefault();
+      commitComboActive(id);
+    } else {
+      e.preventDefault();
+      document.getElementById(`qty-${id}`)?.focus();
+    }
+  } else if (e.key === 'Escape') {
+    dd?.classList.remove('open');
+  }
+}
+
+function commitComboActive(id) {
+  const st = comboState[id];
+  if (!st) return;
+  if (st.active < st.items.length) {
+    const p = st.items[st.active];
+    selectOption(id, p.name, parseFloat(p.weight) || '');
+  } else if (st.hasNew) {
+    addNewProduct(id);
+  }
 }
 
 function openCombo(id) {
@@ -937,14 +1133,19 @@ function onComboBlur(id) {
 function onComboInput(id) {
   const v = document.getElementById(`prod-${id}`);
   v.value = v.value.toUpperCase();
+  if (comboState[id]) comboState[id].active = -1;
   renderCombo(id, v.value.trim());
   document.getElementById(`combo-dd-${id}`)?.classList.add('open');
   onProductSelect(id);
+  refreshAfterChange();
 }
 function selectOption(id, name, wNum) {
   document.getElementById(`prod-${id}`).value = name;
   if (wNum) { document.getElementById(`wt-${id}`).value = wNum; updateUOM(id); }
   document.getElementById(`combo-dd-${id}`)?.classList.remove('open');
+  maybeAddTrailingRow(id);
+  document.getElementById(`qty-${id}`)?.focus();
+  refreshAfterChange();
 }
 async function addNewProduct(id) {
   const name = (document.getElementById(`prod-${id}`)?.value||'').trim().toUpperCase();
@@ -961,6 +1162,8 @@ async function addNewProduct(id) {
     document.getElementById(`wt-${id}`).value = parseFloat(weight);
     updateUOM(id);
     document.getElementById(`combo-dd-${id}`)?.classList.remove('open');
+    maybeAddTrailingRow(id);
+    refreshAfterChange();
     showToast(`✅ Added ${name} → ${weight}`);
   } catch { showToast('Failed to add product'); }
 }
@@ -1004,6 +1207,11 @@ async function submitPrint() {
     if (!confirm(msg)) return;
   }
 
+  // Warn if the printer looks offline — jobs still queue, but flag it.
+  if (printerOnline === false) {
+    if (!confirm('⚠️ The printer appears to be offline.\n\nYour job will be queued and will print automatically once the printer is back online. Continue?')) return;
+  }
+
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
 
@@ -1016,7 +1224,10 @@ async function submitPrint() {
     const data = await res.json();
     showResults(data.results);
     document.getElementById('jobRows').innerHTML='';
-    rowId=0; addRow(); addRow();
+    comboState = {};
+    rowId=0; addRow();
+    localStorage.removeItem(DRAFT_KEY);
+    updateSummary();
     // Auto-switch to queue tab so user can see their jobs
     switchTab('queue');
   } catch { showToast('❌ Cannot reach server'); }
@@ -1050,8 +1261,162 @@ function showResults(results) {
 function resetAll() {
   document.getElementById('jobRows').innerHTML='';
   document.getElementById('results').innerHTML='';
-  rowId=0; addRow(); addRow();
+  comboState = {};
+  rowId=0; addRow();
+  localStorage.removeItem(DRAFT_KEY);
+  updateSummary();
   showToast('Cleared');
+}
+
+// ── Auto-add / trailing row ──────────────────
+function maybeAddTrailingRow(id) {
+  const rows = Array.from(document.querySelectorAll('.job-card'));
+  const last = rows[rows.length - 1];
+  if (last && last.id === `row-${id}`) {
+    const prod = (document.getElementById(`prod-${id}`)?.value||'').trim();
+    if (prod) addRow();
+  }
+}
+
+function ensureTrailingRow() {
+  const rows = Array.from(document.querySelectorAll('.job-card'));
+  if (rows.length === 0) { addRow(); return; }
+  const last = rows[rows.length - 1];
+  const id   = last.id.replace('row-','');
+  const prod = (document.getElementById(`prod-${id}`)?.value||'').trim();
+  if (prod) addRow();
+}
+
+// ── Quantity helpers ─────────────────────────
+function onQtyInput(id)   { refreshAfterChange(); }
+function onWeightInput(id) { updateUOM(id); refreshAfterChange(); }
+
+function onQtyKey(e, id) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const rows = Array.from(document.querySelectorAll('.job-card'));
+  const idx  = rows.findIndex(r => r.id === `row-${id}`);
+  let next   = rows[idx + 1];
+  if (!next) { const nid = addRow(); next = document.getElementById(`row-${nid}`); }
+  const nid2 = next.id.replace('row-','');
+  document.getElementById(`prod-${nid2}`)?.focus();
+  refreshAfterChange();
+}
+
+function bumpQty(id, n) {
+  const el = document.getElementById(`qty-${id}`);
+  if (!el) return;
+  const cur = parseInt(el.value) || 0;
+  el.value = Math.min(cur + n, 500);
+  refreshAfterChange();
+}
+
+function setQty(id, n) {
+  const el = document.getElementById(`qty-${id}`);
+  if (!el) return;
+  el.value = Math.min(n, 500);
+  refreshAfterChange();
+}
+
+// ── Summary + button state ───────────────────
+function computeTotals() {
+  let items = 0, stickers = 0;
+  document.querySelectorAll('.job-card').forEach(row => {
+    const id   = row.id.replace('row-','');
+    const prod = (document.getElementById(`prod-${id}`)?.value||'').trim();
+    const qty  = parseInt(document.getElementById(`qty-${id}`)?.value||'0');
+    if (prod && qty > 0) { items++; stickers += qty; }
+  });
+  return { items, stickers };
+}
+
+function updateSummary() {
+  const { items, stickers } = computeTotals();
+  const el  = document.getElementById('printSummary');
+  const btn = document.getElementById('printBtn');
+  if (el) {
+    if (!items) {
+      el.className = 'print-summary empty';
+      el.textContent = 'Add a product and quantity to print';
+    } else {
+      const roll = document.getElementById('rollType')?.value || 'single';
+      let txt = `<strong>${items}</strong> item${items!==1?'s':''} · <strong>${stickers}</strong> sticker${stickers!==1?'s':''}`;
+      if (roll === 'double') {
+        const nrows = Math.ceil(stickers / 2);
+        txt += ` · ≈ <strong>${nrows}</strong> row${nrows!==1?'s':''} (2-up)`;
+      }
+      el.className = 'print-summary';
+      el.innerHTML = txt;
+    }
+  }
+  if (btn) btn.disabled = items === 0;
+}
+
+function refreshAfterChange() {
+  updateSummary();
+  saveDraft();
+}
+
+// ── Draft persistence ────────────────────────
+function saveDraft() {
+  try {
+    const rows = [];
+    document.querySelectorAll('.job-card').forEach(row => {
+      const id = row.id.replace('row-','');
+      rows.push({
+        product: document.getElementById(`prod-${id}`)?.value || '',
+        qty:     document.getElementById(`qty-${id}`)?.value || '',
+        weight:  document.getElementById(`wt-${id}`)?.value || '',
+      });
+    });
+    const draft = {
+      rows,
+      hotel:  document.getElementById('printHotel')?.value || 'general',
+      packed: document.getElementById('packedDate')?.value || '',
+      bb:     document.getElementById('bestBeforeDate')?.value || '',
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch {}
+}
+
+function readDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function restoreDraftOrDefault() {
+  setDefaultDates();
+  const draft = readDraft();
+  const hasContent = draft && Array.isArray(draft.rows) && draft.rows.some(r => (r.product||'').trim());
+
+  if (hasContent) {
+    const printSel = document.getElementById('printHotel');
+    if (printSel && draft.hotel && hotels.includes(draft.hotel)) {
+      printSel.value = draft.hotel;
+      onPrintHotelChange();
+    }
+    if (draft.packed) document.getElementById('packedDate').value = draft.packed;
+    if (draft.bb)     document.getElementById('bestBeforeDate').value = draft.bb;
+
+    document.getElementById('jobRows').innerHTML = '';
+    comboState = {};
+    rowId = 0;
+    draft.rows.forEach(r => addRow(r.product||'', r.qty||'', r.weight||''));
+    ensureTrailingRow();
+    showToast('Restored your last items');
+  } else {
+    addRow();
+  }
+  refreshAfterChange();
+}
+
+// ── Roll hint ────────────────────────────────
+function updateRollHint() {
+  const val  = document.getElementById('rollType')?.value || 'single';
+  const hint = document.getElementById('rollHint');
+  if (hint) hint.style.display = val === 'double' ? 'block' : 'none';
 }
 
 // ── Products ─────────────────────────────────
@@ -1118,6 +1483,7 @@ function onPrintHotelChange() {
     const id = row.id.replace('row-','');
     onProductSelect(id);
   });
+  refreshAfterChange();
 }
 
 function onProductsHotelChange() {

@@ -12,6 +12,7 @@ from product_manager import (
     add_product, remove_product, list_hotels,
     get_hotel_products, _load as load_products
 )
+from settings_manager import get_settings, set_roll_type
 
 app = Flask(__name__)
 CORS(app)
@@ -102,6 +103,24 @@ def status():
     return jsonify({"status": get_printer_status()})
 
 
+# ── Settings (roll type) ──────────────────────────
+@app.route("/api/settings", methods=["GET"])
+@require_auth
+def get_app_settings():
+    return jsonify(get_settings())
+
+
+@app.route("/api/settings", methods=["POST"])
+@require_auth
+def update_app_settings():
+    body      = request.get_json() or {}
+    roll_type = (body.get("roll_type") or "").strip().lower()
+    result    = set_roll_type(roll_type)
+    if result is None:
+        return jsonify({"error": "Invalid roll_type (use 'single' or 'double')"}), 400
+    return jsonify({"message": f"Roll type set to {result}", "roll_type": result})
+
+
 @app.route("/api/products", methods=["GET"])
 @require_auth
 def get_products():
@@ -137,17 +156,30 @@ def print_labels():
     username = request.username
     queue    = get_queue()
 
+    # Parse all lines first, preserving order. Valid requests are queued together
+    # in one atomic batch so a multi-line submission is paired together in 2-up mode.
+    entries     = []   # ("fail", line, error) or ("ok", line, req)
+    valid_reqs  = []
     for job in jobs:
         line = job.get("line", "").strip()
         if not line:
             continue
         req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before)
         if error:
-            results.append({"line": line, "success": False, "error": error})
+            entries.append(("fail", line, error))
+        else:
+            entries.append(("ok", line, req))
+            valid_reqs.append(req)
+
+    q_jobs = queue.add_batch(valid_reqs, username=username, source="ui") if valid_reqs else []
+    q_iter = iter(q_jobs)
+
+    for kind, line, payload in entries:
+        if kind == "fail":
+            results.append({"line": line, "success": False, "error": payload})
             continue
-
-        q_job = queue.add(req, username=username, source="ui")
-
+        req   = payload
+        q_job = next(q_iter)
         results.append({
             "line":        line,
             "success":     True,

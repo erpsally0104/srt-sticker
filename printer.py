@@ -6,9 +6,26 @@ from parser import PrintRequest
 
 PRINTER_NAME = "TSC TE244"
 
-DPI        = 203
-LABEL_W_PX = int(50 / 25.4 * DPI)   # ~400px
-LABEL_H_PX = int(38 / 25.4 * DPI)   # ~304px
+DPI = 203
+
+# ── Label / media dimensions ──────────────────
+LABEL_W_MM = 50
+LABEL_H_MM = 40          # sticker height (updated from 38mm)
+H_GAP_MM   = 5           # horizontal gap between the two columns on a 2-up roll
+V_GAP_MM   = 2           # vertical gap between rows (TSPL GAP)
+
+
+def _mm_to_px(mm) -> int:
+    return int(round(mm / 25.4 * DPI))
+
+
+LABEL_W_PX = _mm_to_px(LABEL_W_MM)   # ~400px
+LABEL_H_PX = _mm_to_px(LABEL_H_MM)   # ~320px
+H_GAP_PX   = _mm_to_px(H_GAP_MM)     # ~40px
+
+# ── Double (2-up) media dimensions ────────────
+DOUBLE_W_MM = LABEL_W_MM * 2 + H_GAP_MM   # 105mm total
+DOUBLE_W_PX = LABEL_W_PX * 2 + H_GAP_PX
 
 FONT_BRITANNIC = r"C:\Windows\Fonts\britanic.ttf"
 FONT_ARIAL_NB  = r"C:\Windows\Fonts\ARIALNB.TTF"
@@ -219,7 +236,18 @@ def build_ingredients_label_image(req):
     return img
 
 
-def image_to_tspl_bitmap(img, quantity=1):
+def render_label(req, batch_no: str = ""):
+    """Render a single label (product or ingredients) to a PIL image."""
+    if req.label_type == "ingredients":
+        return build_ingredients_label_image(req)
+    return build_label_image(req, batch_no)
+
+
+def _pack_mono(img):
+    """
+    Convert a PIL image into a 1-bit TSPL bitmap.
+    Returns (width_bytes, height, pixel_bytes).
+    """
     img_mono    = img.convert("1")
     w, h        = img_mono.size
     width_bytes = (w + 7) // 8
@@ -239,28 +267,43 @@ def image_to_tspl_bitmap(img, quantity=1):
             row = row << (8 - remaining)
             pixel_data.append(row)
 
-    header = (
-        f"SIZE 50 mm, 38 mm\r\n"
-        f"GAP 2 mm, 0 mm\r\n"
+    return width_bytes, h, bytes(pixel_data)
+
+
+def _tspl_header(size_w_mm, size_h_mm) -> bytes:
+    return (
+        f"SIZE {size_w_mm} mm, {size_h_mm} mm\r\n"
+        f"GAP {V_GAP_MM} mm, 0 mm\r\n"
         f"DIRECTION 1\r\n"
-        f"CLS\r\n"
-        f"BITMAP 0,0,{width_bytes},{h},0,"
     ).encode("ascii")
 
-    return header + bytes(pixel_data) + f"\r\nPRINT {quantity},1\r\n".encode("ascii")
+
+def _bitmap_block(img, quantity: int = 1) -> bytes:
+    """One CLS + BITMAP + PRINT block (a single printed form)."""
+    width_bytes, h, data = _pack_mono(img)
+    return (
+        b"CLS\r\n"
+        + f"BITMAP 0,0,{width_bytes},{h},0,".encode("ascii")
+        + data
+        + f"\r\nPRINT {quantity},1\r\n".encode("ascii")
+    )
 
 
-def print_label(req, batch_no: str = "") -> bool:
+def _compose_double_row(left_img, right_img=None):
+    """Place one or two labels side by side on a 2-up (105mm) canvas."""
+    canvas = Image.new("RGB", (DOUBLE_W_PX, LABEL_H_PX), color="white")
+    if left_img is not None:
+        canvas.paste(left_img, (0, 0))
+    if right_img is not None:
+        canvas.paste(right_img, (LABEL_W_PX + H_GAP_PX, 0))
+    return canvas
+
+
+def _send_to_printer(tspl_data: bytes) -> bool:
     try:
-        if req.label_type == "ingredients":
-            img = build_ingredients_label_image(req)
-        else:
-            img = build_label_image(req, batch_no)
-        tspl_data = image_to_tspl_bitmap(img, req.quantity)
-
         hPrinter = win32print.OpenPrinter(PRINTER_NAME)
         try:
-            hJob = win32print.StartDocPrinter(hPrinter, 1, ("Label Job", None, "RAW"))
+            win32print.StartDocPrinter(hPrinter, 1, ("Label Job", None, "RAW"))
             try:
                 win32print.StartPagePrinter(hPrinter)
                 win32print.WritePrinter(hPrinter, tspl_data)
@@ -273,6 +316,35 @@ def print_label(req, batch_no: str = "") -> bool:
     except Exception as e:
         print(f"[Printer Error] {e}")
         return False
+
+
+def print_label(req, batch_no: str = "") -> bool:
+    """Single-roll path: print `req.quantity` identical labels, one per row."""
+    try:
+        img = render_label(req, batch_no)
+    except Exception as e:
+        print(f"[Printer Error] {e}")
+        return False
+    tspl = _tspl_header(LABEL_W_MM, LABEL_H_MM) + _bitmap_block(img, req.quantity)
+    return _send_to_printer(tspl)
+
+
+def print_double_rows(rows) -> bool:
+    """
+    Double-roll path: print a sequence of 2-up rows.
+    `rows` is a list of (left_img, right_img_or_None) tuples — one printed form each.
+    """
+    if not rows:
+        return True
+    try:
+        tspl = _tspl_header(DOUBLE_W_MM, LABEL_H_MM)
+        for left_img, right_img in rows:
+            canvas = _compose_double_row(left_img, right_img)
+            tspl += _bitmap_block(canvas, quantity=1)
+    except Exception as e:
+        print(f"[Printer Error] {e}")
+        return False
+    return _send_to_printer(tspl)
 
 
 def get_printer_status() -> str:
