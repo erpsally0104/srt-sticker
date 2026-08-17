@@ -5,5 +5,9 @@
   "single_vgap_mm": 2,
   "double_vgap_mm": 2,
   "double_gap_mm": 1,
-  "double_margin_mm": 2
+  "double_margin_mm": 2,
+  "show_fssai": true,
+  "fssai_number": "13620011000563",
+  "show_company_line": true,
+  "company_line": "SRI RADHE TRADERS, BEGUM BAZAR, HYD."
 }

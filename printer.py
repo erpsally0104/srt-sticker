@@ -112,13 +112,26 @@ def build_label_image(req, batch_no):
     font_fssai   = get_font(FONT_ARIAL_BD, 22, FONT_ARIAL_NB)
 
     # ── QR Code ───────────────────────────────────
-    qr_data = (
-        f"{req.product} {req.weight} "
-        f"Batch:{batch_no} "
-        f"Packed:{req.packed_on} "
-        f"Best Before:{req.best_before} "
-        f"SRI RADHE TRADERS FSSAI Lic. No.:13620011000563"
-    )
+    s = get_settings()
+    show_fssai = s.get("show_fssai", True)
+    fssai_number = s.get("fssai_number", "13620011000563")
+    show_company = s.get("show_company_line", True)
+    company_line = s.get("company_line", "SRI RADHE TRADERS, BEGUM BAZAR, HYD.")
+
+    qr_parts = [
+        f"{req.product} {req.weight}",
+        f"Batch:{batch_no}",
+        f"Packed:{req.packed_on}",
+        f"Best Before:{req.best_before}",
+    ]
+    if show_company or show_fssai:
+        qr_suffix = ""
+        if show_company:
+            qr_suffix += company_line.split(",")[0].strip()  # first part of company name
+        if show_fssai:
+            qr_suffix += f" FSSAI Lic. No.:{fssai_number}"
+        qr_parts.append(qr_suffix.strip())
+    qr_data = " ".join(qr_parts)
     qr_size = 110
     qr_img  = make_qr(qr_data).resize((qr_size, qr_size), Image.NEAREST)
     qr_x    = LABEL_W_PX - qr_size - 20   # pulled inward from right edge
@@ -136,7 +149,12 @@ def build_label_image(req, batch_no):
 
     # Bottom section lines
     LINE_BOTTOM  = 21   # font 17 height approx
-    N_BOTTOM     = 3    # 3 lines in bottom section
+    # Count how many bottom lines will actually be drawn
+    n_bottom_lines = 1  # "Not For Retail" is always shown
+    if show_fssai:
+        n_bottom_lines += 1
+    if show_company:
+        n_bottom_lines += 1
 
     # Top section total height
     top_h = (LINE_PRODUCT + GAP_SMALL +
@@ -146,7 +164,7 @@ def build_label_image(req, batch_no):
              LINE_BATCH)                  # Batch (smaller font)
 
     # Divider + bottom section
-    bottom_h = GAP_DIVIDER + 2 + GAP_DIVIDER + (LINE_BOTTOM + 4) * N_BOTTOM
+    bottom_h = GAP_DIVIDER + 2 + GAP_DIVIDER + (LINE_BOTTOM + 4) * n_bottom_lines
 
     total_h  = top_h + GAP_DIVIDER + bottom_h
 
@@ -181,12 +199,12 @@ def build_label_image(req, batch_no):
     y = divider_y + GAP_DIVIDER
 
     # ── Bottom section — centered ─────────────────
-    # fssai first — 20px bold
-    draw_centered(draw, y, "FSSAI Lic. No. 13620011000563", font_fssai)
-    y += 24
-    # Address
-    draw_centered(draw, y, "SRI RADHE TRADERS, BEGUM BAZAR, HYD.", font_bottom)
-    y += LINE_BOTTOM + 4
+    if show_fssai:
+        draw_centered(draw, y, f"FSSAI Lic. No. {fssai_number}", font_fssai)
+        y += 24
+    if show_company:
+        draw_centered(draw, y, company_line, font_bottom)
+        y += LINE_BOTTOM + 4
     # Not For Retail last
     draw_centered(draw, y, "Not For Retail Sale | For Institutional Sale Only", font_bottom)
 

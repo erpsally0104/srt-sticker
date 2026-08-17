@@ -25,9 +25,18 @@ GEOMETRY_LIMITS = {
     "double_margin_mm": (0, 30),
 }
 
+# ── Label text defaults ────────────────────────
+LABEL_TEXT_DEFAULTS = {
+    "show_fssai":      True,
+    "fssai_number":    "13620011000563",
+    "show_company_line": True,
+    "company_line":    "SRI RADHE TRADERS, BEGUM BAZAR, HYD.",
+}
+
 DEFAULT_SETTINGS = {
     "roll_type": "single",  # "single" (1 label per row) | "double" (2 labels side by side)
     **GEOMETRY_DEFAULTS,
+    **LABEL_TEXT_DEFAULTS,
 }
 
 
@@ -123,5 +132,44 @@ def set_geometry(updates: dict):
         val = int(val) if float(val).is_integer() else val
         data[key] = val
         applied[key] = val
+    _save(data)
+    return applied, None
+
+
+# ── Label text settings (FSSAI / company line) ────
+def get_label_text_settings() -> dict:
+    """Return the label text visibility & content settings."""
+    data = _load()
+    return {k: data.get(k, v) for k, v in LABEL_TEXT_DEFAULTS.items()}
+
+
+def set_label_text_settings(updates: dict):
+    """
+    Update label text settings. Accepts any subset of LABEL_TEXT_DEFAULTS keys.
+    Returns (applied_dict, None) on success or (None, error_message) on failure.
+    """
+    if not updates:
+        return {}, None
+    data = _load()
+    applied = {}
+    for key, raw in updates.items():
+        if key not in LABEL_TEXT_DEFAULTS:
+            continue
+        if key in ("show_fssai", "show_company_line"):
+            # Accept bool or truthy string
+            if isinstance(raw, bool):
+                val = raw
+            elif isinstance(raw, str):
+                val = raw.lower() in ("true", "1", "yes")
+            else:
+                val = bool(raw)
+            data[key] = val
+            applied[key] = val
+        elif key in ("fssai_number", "company_line"):
+            val = str(raw).strip()
+            if not val:
+                return None, f"{key.replace('_', ' ').title()} cannot be empty"
+            data[key] = val
+            applied[key] = val
     _save(data)
     return applied, None

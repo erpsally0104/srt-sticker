@@ -12,7 +12,10 @@ from product_manager import (
     add_product, remove_product, list_hotels,
     get_hotel_products, _load as load_products
 )
-from settings_manager import get_settings, set_roll_type, set_geometry, GEOMETRY_DEFAULTS
+from settings_manager import (
+    get_settings, set_roll_type, set_geometry, GEOMETRY_DEFAULTS,
+    set_label_text_settings, LABEL_TEXT_DEFAULTS,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -124,6 +127,13 @@ def update_app_settings():
     geo_updates = {k: body[k] for k in body if k in GEOMETRY_DEFAULTS}
     if geo_updates:
         applied, err = set_geometry(geo_updates)
+        if err:
+            return jsonify({"error": err}), 400
+
+    # Label text settings (FSSAI / company line) (optional)
+    text_updates = {k: body[k] for k in body if k in LABEL_TEXT_DEFAULTS}
+    if text_updates:
+        applied, err = set_label_text_settings(text_updates)
         if err:
             return jsonify({"error": err}), 400
 
