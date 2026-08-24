@@ -495,6 +495,20 @@ header {
 /* ── Combo keyboard highlight ────────────────── */
 .combo-option.active, .combo-new.active { background: #fff3e0; }
 
+/* ── Toggle switch ───────────────────────────── */
+.toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: #ccc; border-radius: 24px; transition: 0.25s;
+}
+.toggle-slider::before {
+  content: ""; position: absolute; height: 18px; width: 18px;
+  left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.25s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--saffron); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
 /* ── Row clone button ────────────────────────── */
 .job-card-clone {
   position: absolute; top: 8px; right: 44px;
@@ -763,6 +777,30 @@ header {
         <div id="doubleWidthPreview" class="print-summary" style="margin-top:12px;"></div>
       </div>
 
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Label Content</div>
+
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <label class="form-label" style="margin:0; flex:1;" for="toggleFssai">Show FSSAI Number</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggleFssai" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <label class="form-label" for="setFssaiNumber">FSSAI Lic. Number</label>
+        <input type="text" id="setFssaiNumber" placeholder="e.g. 13620011000563" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem; margin-bottom:12px;" />
+
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <label class="form-label" style="margin:0; flex:1;" for="toggleCompany">Show Company Line</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggleCompany" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <label class="form-label" for="setCompanyLine">Company Line</label>
+        <input type="text" id="setCompanyLine" placeholder="e.g. SRI RADHE TRADERS, BEGUM BAZAR, HYD." style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem;" />
+      </div>
+
       <button class="btn-primary" id="saveSettingsBtn" onclick="saveGeometry()" style="margin-top:0.25rem;">
         <span id="saveSettingsContent">💾 SAVE SETTINGS</span>
       </button>
@@ -914,6 +952,12 @@ function applySettingsToForm(s) {
   set('setDoubleVGap', s.double_vgap_mm);
   set('setDoubleGap', s.double_gap_mm);
   set('setDoubleMargin', s.double_margin_mm);
+  // Label content fields
+  const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+  chk('toggleFssai', s.show_fssai !== undefined ? s.show_fssai : true);
+  chk('toggleCompany', s.show_company_line !== undefined ? s.show_company_line : true);
+  set('setFssaiNumber', s.fssai_number);
+  set('setCompanyLine', s.company_line);
   updateDoubleWidthPreview();
 }
 
@@ -936,8 +980,15 @@ async function saveGeometry() {
     double_vgap_mm:   parseFloat(document.getElementById('setDoubleVGap').value),
     double_gap_mm:    parseFloat(document.getElementById('setDoubleGap').value),
     double_margin_mm: parseFloat(document.getElementById('setDoubleMargin').value),
+    show_fssai:       document.getElementById('toggleFssai').checked,
+    fssai_number:     document.getElementById('setFssaiNumber').value.trim(),
+    show_company_line: document.getElementById('toggleCompany').checked,
+    company_line:     document.getElementById('setCompanyLine').value.trim(),
   };
-  if (Object.values(payload).some(v => isNaN(v))) { showToast('Fill all fields with numbers'); return; }
+  const numFields = ['label_width_mm','label_height_mm','single_vgap_mm','double_vgap_mm','double_gap_mm','double_margin_mm'];
+  if (numFields.some(k => isNaN(payload[k]))) { showToast('Fill all geometry fields with numbers'); return; }
+  if (!payload.fssai_number) { showToast('FSSAI number cannot be empty'); return; }
+  if (!payload.company_line) { showToast('Company line cannot be empty'); return; }
 
   btn.disabled = true; content.innerHTML = '<div class="spinner"></div>';
   try {
