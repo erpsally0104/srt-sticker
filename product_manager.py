@@ -3,7 +3,7 @@ import os
 
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
 
-DEFAULT_WEIGHT = "500 GMS"
+DEFAULT_WEIGHT = "500 g"
 DEFAULT_HOTEL  = "general"
 
 

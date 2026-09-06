@@ -6,8 +6,8 @@
   "double_vgap_mm": 2,
   "double_gap_mm": 1,
   "double_margin_mm": 2,
-  "show_fssai": true,
   "fssai_number": "13620011000563",
-  "show_company_line": true,
-  "company_line": "SRI RADHE TRADERS, BEGUM BAZAR, HYD."
+  "company_prefix": "Packed & Marketed by",
+  "company_name": "SRI RADHE TRADERS",
+  "company_address": "15-7-173/A, BEGUM BAZAR, HYDERABAD, TELANGANA - 500012"
 }

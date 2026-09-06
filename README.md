@@ -30,7 +30,20 @@ LABEL_HEIGHT_MM = 60    # height of sticker in mm
 GAP_MM          = 3     # gap between stickers
 ```
 
-### Step 5 — Run the bot
+### Step 5 — Add the FSSAI logo artwork
+FSSAI Reg 5(7)(a) requires the **logo** on the label, not just the licence number.
+The mark is a certification mark, so it is loaded from a file and never drawn in code.
+
+1. Download the official logo from **fssai.gov.in**
+2. Save it as **`fssai_logo.png`** in this folder (beside `printer.py`)
+3. A wordmark around 2.5:1 (width:height) sits best on the licence line; transparent PNG is fine
+
+It is picked up on the next label without restarting. Until the file is added, the
+label falls back to a text-only `FSSAI Lic. No. ...` line so printing never stops.
+
+---
+
+### Step 6 — Run the bot
 ```
 python bot.py
 ```

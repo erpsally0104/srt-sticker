@@ -19,9 +19,13 @@ class PrintRequest:
     hotel: str = "general"       # hotel/client this product belongs to
 
 
-def resolve_date(raw: str, fallback: datetime = None) -> Optional[str]:
+def resolve_date(raw: str, fallback: datetime = None) -> Optional[datetime]:
     """
-    Resolve a flexible date string into DD/MM/YY format.
+    Resolve a flexible date string into a datetime.
+
+    Formatting happens later in format_date_pair(), because the printed
+    format depends on the shelf life — the gap between the two dates —
+    not on either date alone.
 
     Supported inputs:
         ""  / None          → None (caller uses default)
@@ -32,7 +36,7 @@ def resolve_date(raw: str, fallback: datetime = None) -> Optional[str]:
         "15/04/26"          → DD/MM/YY parsed
         "15-04-26"          → DD-MM-YY parsed
 
-    Returns DD/MM/YY string or None if input is empty/blank.
+    Returns a datetime, or None if input is empty/blank.
     Raises ValueError on unparseable input.
     """
     if raw is None:
@@ -48,21 +52,19 @@ def resolve_date(raw: str, fallback: datetime = None) -> Optional[str]:
         base = fallback or datetime.now()
         rest = low[5:]  # after "today"
         if not rest:
-            return base.strftime("%d/%m/%y")
+            return base
         # Match +Nmonth(s) or +Nday(s) or +Nyear(s)
         m = re.match(r"^\+(\d+)(months?|days?|years?)$", rest)
         if m:
             num  = int(m.group(1))
             unit = m.group(2)
             if unit.startswith("month"):
-                dt = base + relativedelta(months=num)
+                return base + relativedelta(months=num)
             elif unit.startswith("day"):
-                dt = base + relativedelta(days=num)
+                return base + relativedelta(days=num)
             elif unit.startswith("year"):
-                dt = base + relativedelta(years=num)
-            else:
-                raise ValueError(f"Unknown unit in date expression: {raw}")
-            return dt.strftime("%d/%m/%y")
+                return base + relativedelta(years=num)
+            raise ValueError(f"Unknown unit in date expression: {raw}")
         raise ValueError(f"Cannot parse date expression: {raw}")
 
     # DD/MM/YYYY or DD-MM-YYYY or DD/MM/YY or DD-MM-YY
@@ -73,45 +75,72 @@ def resolve_date(raw: str, fallback: datetime = None) -> Optional[str]:
                 year_part = parts[2]
                 try:
                     if len(year_part) == 4:
-                        dt = datetime.strptime(raw, fmt4)
-                    else:
-                        dt = datetime.strptime(raw, fmt2)
-                    return dt.strftime("%d/%m/%y")
+                        return datetime.strptime(raw, fmt4)
+                    return datetime.strptime(raw, fmt2)
                 except ValueError:
                     pass
 
     raise ValueError(f"Cannot parse date: {raw}")
 
 
+# Month abbreviations in capitals — spelled out rather than taken from
+# strftime("%b") so the label never changes with the machine's locale.
+MONTHS_UPPER = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+
+
+def format_date_pair(packed: datetime, expiry: datetime) -> Tuple[str, str]:
+    """
+    Format the packed and use-by dates per FSSAI Reg 5(10)(b)(i).
+
+    Shelf life up to 3 months → DD/MM/YY
+    Shelf life over 3 months  → MON YYYY, month in capital letters
+
+    Both dates take the same format so they read as a pair, which
+    Reg 5(10)(e) requires them to when grouped together. The packing day
+    stays recoverable from the batch number (SRT + DDMMYY + sequence).
+    """
+    if expiry > packed + relativedelta(months=3):
+        return (
+            f"{MONTHS_UPPER[packed.month - 1]} {packed.year}",
+            f"{MONTHS_UPPER[expiry.month - 1]} {expiry.year}",
+        )
+    return packed.strftime("%d/%m/%y"), expiry.strftime("%d/%m/%y")
+
+
 def normalize_weight(raw: str) -> str:
     """
-    Smart weight normalization:
+    Smart weight normalization into Legal Metrology unit symbols.
 
-    User gives "2"     → number < 100  → "2 KGS"
-    User gives "500"   → number >= 100 → "500 GMS"
-    User gives "2 KGS" → has unit      → "2 KGS" (unchanged)
-    User gives "500 GMS" → has unit    → "500 GMS" (unchanged)
-    User gives "2kg" / "2kgs" / "2 kg" → normalized to "2 KGS"
+    User gives "2"       → number < 100  → "2 kg"
+    User gives "500"     → number >= 100 → "500 g"
+    User gives "2 KGS"   → has unit      → "2 kg"
+    User gives "500 GMS" → has unit      → "500 g"
+    User gives "2kg" / "2kgs" / "2 kg"   → "2 kg"
+
+    The Legal Metrology (Packaged Commodities) Rules allow only the SI
+    symbols — lowercase, singular, no full stop. "KGS" and "GMS" are not
+    valid net-quantity declarations, so every input form collapses to
+    "kg" or "g" here.
     """
     raw = raw.strip().upper()
 
-    # Already has a unit keyword — return as-is (cleaned up)
+    # Already has a unit keyword — rewrite it as the SI symbol
     for unit in ["KGS", "KG", "GMS", "GM", "GRAMS", "GRAM", "G"]:
         if unit in raw:
-            # Normalize to KGS or GMS
             number = raw.replace(unit, "").strip()
             if unit in ["KGS", "KG"]:
-                return f"{number} KGS"
+                return f"{number} kg"
             else:
-                return f"{number} GMS"
+                return f"{number} g"
 
     # Pure number — apply auto unit logic
     try:
         value = float(raw)
         if value < 100:
-            return f"{int(value) if value == int(value) else value} KGS"
+            return f"{int(value) if value == int(value) else value} kg"
         else:
-            return f"{int(value) if value == int(value) else value} GMS"
+            return f"{int(value) if value == int(value) else value} g"
     except ValueError:
         # Not a number, return as-is
         return raw
@@ -128,11 +157,11 @@ def parse_message(
 
     Accepted formats:
         phalli, 10                                              → product uppercased, weight from product list
-        PHALLI, 10, 2                                           → weight auto → "2 KGS"
-        PHALLI, 10, 500                                         → weight auto → "500 GMS"
-        PHALLI, 10, 2 KGS                                      → weight kept as "2 KGS"
-        PHALLI, 10, 500 GMS                                     → weight kept as "500 GMS"
-        PHALLI, 10, 2 KGS, packed_date, best_before, hotelname → full format
+        PHALLI, 10, 2                                           → weight auto → "2 kg"
+        PHALLI, 10, 500                                         → weight auto → "500 g"
+        PHALLI, 10, 2 KGS                                       → normalized to "2 kg"
+        PHALLI, 10, 500 GMS                                     → normalized to "500 g"
+        PHALLI, 10, 2 kg, packed_date, use_by, hotelname        → full format
 
     packed_on / best_before can also be passed as function args (from UI / server).
     Date values support: today, today + 3 months, DD/MM/YYYY, DD-MM-YYYY, etc.
@@ -187,7 +216,9 @@ def parse_message(
         req_hotel = parts[5].strip().lower()
 
     if weight is None:
-        weight = get_weight(product, req_hotel)
+        # Normalize on the way out too — stored weights may predate the
+        # switch to SI symbols.
+        weight = normalize_weight(get_weight(product, req_hotel))
 
     # Resolve dates — inline params (from bot) take priority over function args (from UI)
     today = datetime.now()
@@ -195,18 +226,20 @@ def parse_message(
     # Packed on
     raw_packed = inline_packed or packed_on
     try:
-        resolved_packed = resolve_date(raw_packed, fallback=today)
+        packed_dt = resolve_date(raw_packed, fallback=today)
     except ValueError as e:
         return None, f"⚠️ Invalid packed date: {e}"
-    packed_on_str = resolved_packed or today.strftime("%d/%m/%y")
+    packed_dt = packed_dt or today
 
-    # Best before
+    # Use by
     raw_bb = inline_bb or best_before
     try:
-        resolved_bb = resolve_date(raw_bb, fallback=today)
+        expiry_dt = resolve_date(raw_bb, fallback=today)
     except ValueError as e:
-        return None, f"⚠️ Invalid best-before date: {e}"
-    best_before_str = resolved_bb or (today + relativedelta(months=3)).strftime("%d/%m/%y")
+        return None, f"⚠️ Invalid use-by date: {e}"
+    expiry_dt = expiry_dt or (today + relativedelta(months=3))
+
+    packed_on_str, best_before_str = format_date_pair(packed_dt, expiry_dt)
 
     return PrintRequest(
         product=product,
@@ -274,10 +307,10 @@ def _format_error() -> str:
         "*Examples:*\n"
         "`PHALLI, 10`\n"
         "`TOOR DAL, 5, 2`\n"
-        "`TOOR DAL, 5, 2 KGS`\n"
-        "`TOOR DAL, 5, 2 KGS, today, today + 6 months, taj`\n"
-        "`TOOR DAL, 5, 2 KGS, 15/04/2026, 15/07/2026`\n\n"
-        "_Dates are optional. Defaults: Packed = today, Best Before = today + 3 months._\n"
+        "`TOOR DAL, 5, 2 kg`\n"
+        "`TOOR DAL, 5, 2 kg, today, today + 6 months, taj`\n"
+        "`TOOR DAL, 5, 2 kg, 15/04/2026, 15/07/2026`\n\n"
+        "_Dates are optional. Defaults: Packed = today, Use By = today + 3 months._\n"
         "_Date formats: today, today + N months, DD/MM/YYYY, DD-MM-YYYY_\n\n"
         "*Ingredients sticker:*\n"
         "`Refined wheat flour, Rice Flour ;; i`\n"

@@ -11,3 +11,7 @@ __pycache__/
 
 # IDE
 .vscode/
+
+# Secrets & runtime state (see auth.py:_load_secret)
+.jwt_secret
+batch.json

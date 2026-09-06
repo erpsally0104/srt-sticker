@@ -26,12 +26,22 @@ GEOMETRY_LIMITS = {
 }
 
 # ── Label text defaults ────────────────────────
+# These are all mandatory declarations under FSSAI Reg 5(6)(a), 5(7) and
+# Reg 10(1), so they are content settings only — there is deliberately no
+# switch to hide any of them.
 LABEL_TEXT_DEFAULTS = {
-    "show_fssai":      True,
     "fssai_number":    "13620011000563",
-    "show_company_line": True,
-    "company_line":    "SRI RADHE TRADERS, BEGUM BAZAR, HYD.",
+    # Reg 5(6)(a): the name must be preceded by a qualifying phrase.
+    "company_prefix":  "Packed & Marketed by",
+    "company_name":    "SRI RADHE TRADERS",
+    # Reg 5(6)(a) requires the COMPLETE address, door number included.
+    "company_address": "15-7-173/A, BEGUM BAZAR, HYDERABAD, TELANGANA - 500012",
 }
+
+# Dropped in the FSSAI compliance pass: the two visibility toggles could
+# produce a label with no licence number or no name and address, and
+# company_line has been split into prefix / name / address above.
+RETIRED_KEYS = ("show_fssai", "show_company_line", "company_line")
 
 DEFAULT_SETTINGS = {
     "roll_type": "single",  # "single" (1 label per row) | "double" (2 labels side by side)
@@ -63,6 +73,11 @@ def _load() -> dict:
     for key, val in DEFAULT_SETTINGS.items():
         if key not in data:
             data[key] = val
+            changed = True
+    # Drop settings that no longer drive the label
+    for key in RETIRED_KEYS:
+        if key in data:
+            del data[key]
             changed = True
     if changed:
         _save(data)
@@ -155,21 +170,12 @@ def set_label_text_settings(updates: dict):
     for key, raw in updates.items():
         if key not in LABEL_TEXT_DEFAULTS:
             continue
-        if key in ("show_fssai", "show_company_line"):
-            # Accept bool or truthy string
-            if isinstance(raw, bool):
-                val = raw
-            elif isinstance(raw, str):
-                val = raw.lower() in ("true", "1", "yes")
-            else:
-                val = bool(raw)
-            data[key] = val
-            applied[key] = val
-        elif key in ("fssai_number", "company_line"):
-            val = str(raw).strip()
-            if not val:
-                return None, f"{key.replace('_', ' ').title()} cannot be empty"
-            data[key] = val
-            applied[key] = val
+        val = str(raw).strip()
+        if not val:
+            # Every one of these is a mandatory declaration — blanking any
+            # of them would print a non-compliant label.
+            return None, f"{key.replace('_', ' ').title()} cannot be empty"
+        data[key] = val
+        applied[key] = val
     _save(data)
     return applied, None
