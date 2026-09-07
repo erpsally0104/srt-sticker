@@ -85,8 +85,14 @@ def _load() -> dict:
 
 
 def _save(data: dict):
-    with open(SETTINGS_FILE, "w") as f:
+    # Atomic write: open(..., "w") truncates first, so an interrupted or
+    # concurrent write would leave a partial file that _load() cannot parse.
+    tmp = SETTINGS_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, SETTINGS_FILE)
 
 
 def get_settings() -> dict:

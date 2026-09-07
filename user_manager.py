@@ -5,13 +5,24 @@ USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
 
 
 def _load() -> dict:
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(USERS_FILE, "r") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        # A corrupt users.json must not lock every operator out of the bot
+        print("⚠️  users.json is unreadable — treating as empty until it is fixed")
+        return {}
 
 
 def _save(data: dict):
-    with open(USERS_FILE, "w") as f:
+    # Atomic write: open(..., "w") truncates first, so an interrupted or
+    # concurrent write would leave a partial file that _load() cannot parse.
+    tmp = USERS_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, USERS_FILE)
 
 
 def is_admin(username: str) -> bool:

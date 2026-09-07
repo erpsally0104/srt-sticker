@@ -1,15 +1,38 @@
 import json
 import os
+import shutil
 
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
+BACKUP_FILE   = PRODUCTS_FILE + ".bak"
 
 DEFAULT_WEIGHT = "500 g"
 DEFAULT_HOTEL  = "general"
 
 
+def _read_json(path):
+    """Parse a JSON file, or return None if it is missing or unreadable."""
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _load() -> dict:
-    with open(PRODUCTS_FILE, "r") as f:
-        data = json.load(f)
+    data = _read_json(PRODUCTS_FILE)
+
+    if data is None:
+        # A truncated products.json takes down every endpoint that lists
+        # products, so fall back to the last good copy rather than 500.
+        data = _read_json(BACKUP_FILE)
+        if data is None:
+            raise ValueError(
+                f"{PRODUCTS_FILE} is unreadable and there is no usable backup. "
+                "Restore it with:  git checkout -- products.json"
+            )
+        print(f"⚠️  {PRODUCTS_FILE} was unreadable — recovered from {BACKUP_FILE}")
+        _save(data)
+
     # Auto-migrate flat format → hotel-grouped format
     if data and not any(isinstance(v, dict) for v in data.values()):
         data = {DEFAULT_HOTEL: data}
@@ -18,8 +41,26 @@ def _load() -> dict:
 
 
 def _save(data: dict):
-    with open(PRODUCTS_FILE, "w") as f:
+    """
+    Write atomically, keeping the previous good copy as products.json.bak.
+
+    open(..., "w") truncates the file before a single byte is written, so
+    an interrupted or concurrent write leaves a partial document that
+    _load() can no longer parse — and run.bat starts bot.py and server.py
+    as two processes that both write here. Writing to a temp file and
+    renaming means the live file is only ever a complete document.
+    """
+    tmp = PRODUCTS_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    if os.path.exists(PRODUCTS_FILE):
+        try:
+            shutil.copyfile(PRODUCTS_FILE, BACKUP_FILE)
+        except OSError:
+            pass          # a missing backup must never block the write
+    os.replace(tmp, PRODUCTS_FILE)      # atomic on Windows and POSIX
 
 
 def get_weight(product: str, hotel: str = DEFAULT_HOTEL) -> str:

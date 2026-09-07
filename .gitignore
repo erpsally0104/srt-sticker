@@ -15,3 +15,5 @@ __pycache__/
 # Secrets & runtime state (see auth.py:_load_secret)
 .jwt_secret
 batch.json
+*.json.bak
+*.json.tmp
