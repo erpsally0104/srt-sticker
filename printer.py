@@ -514,21 +514,67 @@ def print_double_rows(rows) -> bool:
     return _send_to_printer(tspl)
 
 
-def get_printer_status() -> str:
+# winspool PRINTER_STATUS_* bits. The old code read 0x10 as "busy", but
+# 0x10 is PAPER_OUT — busy is 0x200 and printing is 0x400. A printer that
+# was merely mid-job therefore reported as a fault.
+_ST_PAUSED    = 0x00000001
+_ST_ERROR     = 0x00000002
+_ST_PAPER_JAM = 0x00000008
+_ST_PAPER_OUT = 0x00000010
+_ST_OFFLINE   = 0x00000080
+_ST_IO_ACTIVE = 0x00000100
+_ST_BUSY      = 0x00000200
+_ST_PRINTING  = 0x00000400
+_ST_DOOR_OPEN = 0x00400000
+_ST_POWER_SAVE = 0x01000000
+
+# States that mean "working normally", not "broken". Treating these as
+# faults is what made the UI sit on Offline while the printer was fine.
+_ST_HEALTHY = _ST_IO_ACTIVE | _ST_BUSY | _ST_PRINTING | _ST_POWER_SAVE
+
+
+def check_printer():
+    """
+    Returns (online: bool, message: str).
+
+    `online` means jobs will print — a busy or actively printing printer
+    is online. Only a real fault or a missing printer is offline.
+    """
     try:
         hPrinter = win32print.OpenPrinter(PRINTER_NAME)
-        info = win32print.GetPrinter(hPrinter, 2)
-        win32print.ClosePrinter(hPrinter)
-        status = info["Status"]
-        if status == 0:
-            return "🟢 Printer is online and ready."
-        elif status & 0x00000080:
-            return "🔴 Printer is offline."
-        elif status & 0x00000010:
-            return "🟡 Printer is busy."
-        elif status & 0x00000002:
-            return "🔴 Printer error."
-        else:
-            return f"🟡 Printer status code: {status}"
+        try:
+            info = win32print.GetPrinter(hPrinter, 2)
+        finally:
+            win32print.ClosePrinter(hPrinter)
     except Exception as e:
-        return f"🔴 Cannot connect to printer: {e}"
+        return False, f"🔴 Cannot connect to printer '{PRINTER_NAME}': {e}"
+
+    status = info["Status"]
+
+    if status == 0:
+        return True, "🟢 Printer is online and ready."
+    if status & _ST_OFFLINE:
+        return False, "🔴 Printer is offline — check power and the USB cable."
+    if status & _ST_PAPER_OUT:
+        return False, "🔴 Out of labels."
+    if status & _ST_PAPER_JAM:
+        return False, "🔴 Label jam."
+    if status & _ST_DOOR_OPEN:
+        return False, "🔴 Printer cover is open."
+    if status & _ST_ERROR:
+        return False, "🔴 Printer error."
+    if status & _ST_PAUSED:
+        return False, "🔴 Printer is paused in Windows — resume it from Devices & Printers."
+    if status & _ST_PRINTING:
+        return True, "🟢 Printer is online — printing."
+    if status & _ST_BUSY or status & _ST_IO_ACTIVE:
+        return True, "🟢 Printer is online — busy."
+    if status & ~_ST_HEALTHY == 0:
+        return True, "🟢 Printer is online and ready."
+
+    # Unknown flag: report it rather than guessing it is a fault
+    return True, f"🟡 Printer is online — unrecognised status code {status}."
+
+
+def get_printer_status() -> str:
+    return check_printer()[1]

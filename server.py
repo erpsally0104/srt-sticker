@@ -5,7 +5,7 @@ from functools import wraps
 from auth import init_db, verify_user, generate_tokens, verify_access_token, verify_refresh_token
 from logger import log_print, get_logs, get_all_usernames
 from parser import parse_message
-from printer import print_label, get_printer_status
+from printer import print_label, get_printer_status, check_printer
 from batch_manager import get_next_batch_number
 from print_queue import get_queue
 from product_manager import (
@@ -103,7 +103,8 @@ def refresh():
 @app.route("/api/status", methods=["GET"])
 @require_auth
 def status():
-    return jsonify({"status": get_printer_status()})
+    online, message = check_printer()
+    return jsonify({"status": message, "online": online})
 
 
 # ── Settings (roll type) ──────────────────────────

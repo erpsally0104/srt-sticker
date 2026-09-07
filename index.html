@@ -1082,7 +1082,9 @@ async function checkStatus() {
     const res  = await apiFetch(`${API}/status`);
     if (!res) return;
     const data = await res.json();
-    const ok   = data.status.includes('online');
+    const ok   = (typeof data.online === 'boolean')
+                 ? data.online
+                 : data.status.includes('online');   // older server
     printerOnline    = ok;
     dot.className    = 'status-dot ' + (ok ? 'online' : 'offline');
     text.textContent = ok ? 'Online' : 'Offline';
