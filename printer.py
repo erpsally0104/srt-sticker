@@ -122,7 +122,12 @@ def fit_font(draw, text, path, size, max_width, fallback=None, min_size=9):
 # and save it as fssai_logo.png beside this module. A wordmark around
 # 2.5:1 (w:h) sits best on the licence line; transparent PNG is fine.
 FSSAI_LOGO_PATH = os.path.join(os.path.dirname(__file__), "fssai_logo.png")
-FSSAI_LOGO_H    = 22   # px at 203 dpi ≈ 2.7 mm tall
+FSSAI_LOGO_H    = 26   # px at 203 dpi ≈ 3.3 mm tall
+# Alpha cut for the silhouette below. The mark is downscaled ~38x, so its
+# edges land on part-transparent pixels; a low cut keeps them, which
+# thickens every stroke by roughly half a dot. That matters because a
+# 1-dot-wide line is the faintest mark a thermal head can make.
+FSSAI_LOGO_ALPHA_T = 90
 
 # ── Pre-printed veg mark keep-out ─────────────
 # The label stock carries the veg/non-veg mark pre-printed in the top-right
@@ -138,40 +143,56 @@ _logo_cache = {}
 
 def load_fssai_logo(height=FSSAI_LOGO_H):
     """
-    Load fssai_logo.png, scaled to `height` px and hard-thresholded to
-    pure black and white.
+    Load fssai_logo.png, scaled to `height` px and reduced to pure black
+    and white for the thermal head.
 
-    Returns None when the file is absent or unreadable, so the label
-    falls back to a text-only licence line rather than failing to print.
-    Cached on the file's mtime, so dropping the artwork in is picked up
-    without restarting the bot.
+    The mark is reduced by its ALPHA channel, not its brightness. The FSSAI
+    logo is multi-coloured -- an indigo wordmark between an orange rule and a
+    green rule -- and a brightness threshold judges each colour separately.
+    The orange rule sits at luminance 144, right on the old cut of 160, so it
+    was dropped entirely and the mark printed without it. Every non-transparent
+    pixel is part of the artwork regardless of its colour, so the alpha channel
+    is the correct silhouette for the single-colour reproduction Reg 5(7)(a)
+    allows -- and it reproduces the mark's shape exactly.
+
+    Falls back to the brightness threshold when the artwork has no usable
+    transparency (a flattened PNG or a JPEG), because there the alpha channel
+    is opaque everywhere and would render as a solid black box.
+
+    Returns None when the file is absent or unreadable, so the label falls
+    back to a text-only licence line rather than failing to print. Cached on
+    the file's mtime, so dropping new artwork in is picked up without
+    restarting the bot.
     """
     try:
         mtime = os.path.getmtime(FSSAI_LOGO_PATH)
     except OSError:
         return None
 
-    key = (height, mtime)
+    key = (height, FSSAI_LOGO_ALPHA_T, mtime)
     if key in _logo_cache:
         return _logo_cache[key]
 
     try:
-        logo = Image.open(FSSAI_LOGO_PATH)
-        # Flatten any transparency onto white before thresholding
-        if logo.mode in ("RGBA", "LA", "P"):
-            logo = logo.convert("RGBA")
-            flat = Image.new("RGB", logo.size, "white")
-            flat.paste(logo, mask=logo.split()[-1])
-            logo = flat
-        else:
-            logo = logo.convert("RGB")
+        src = Image.open(FSSAI_LOGO_PATH)
+        src = src.convert("RGBA")
+        w, h = src.size
+        target = (max(1, round(w * height / h)), height)
 
-        w, h = logo.size
-        logo = logo.resize((max(1, round(w * height / h)), height), Image.LANCZOS)
-        # A thermal head prints a dot or nothing. _pack_mono() dithers the
-        # finished label, which would turn a greyscale logo into noise, so
-        # threshold it to solid black here instead.
-        logo = logo.convert("L").point(lambda p: 0 if p < 160 else 255).convert("RGB")
+        alpha = src.split()[-1]
+        if alpha.getextrema()[0] < 255:
+            # Normal path: transparent background, so alpha is the artwork.
+            mask = alpha.resize(target, Image.LANCZOS)
+            logo = mask.point(lambda p: 0 if p >= FSSAI_LOGO_ALPHA_T else 255)
+        else:
+            # Opaque artwork -- fall back to brightness. Kept generous at 200
+            # so the orange rule (luminance 144) survives this path too.
+            flat = Image.new("RGB", src.size, "white")
+            flat.paste(src, mask=alpha)
+            grey = flat.resize(target, Image.LANCZOS).convert("L")
+            logo = grey.point(lambda p: 0 if p < 200 else 255)
+
+        logo = logo.convert("RGB")
     except Exception as e:
         print(f"[Printer Warning] Could not load {FSSAI_LOGO_PATH}: {e}")
         return None
