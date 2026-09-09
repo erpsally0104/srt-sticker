@@ -20,3 +20,7 @@ batch.json
 
 # User list (Telegram handles + admin) - runtime state, not source
 users.json
+
+# Local database snapshots
+backups/
+batch.json.migrated

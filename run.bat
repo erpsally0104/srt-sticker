@@ -1,5 +1,12 @@
 @echo off
-cd C:\Users\srtac\workspace\label-bot
+cd /d "%~dp0"
+
+rem Windows consoles default to cp1252, which crashes on the status emoji
+rem the moment anything prints one (check_printer.py, bot.py, server.py).
+set PYTHONUTF8=1
+
+echo Backing up database...
+python backup_db.py
 
 echo Starting Label Bot...
 start "LabelBot" python bot.py
@@ -17,6 +24,6 @@ echo Waiting for server to start...
 timeout /t 10 /nobreak > nul
 
 echo Opening UI in Chrome...
-start chrome "C:\Users\srtac\workspace\label-bot\ui.html"
+start chrome "%~dp0index.html"
 
 echo All services started!

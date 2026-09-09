@@ -517,6 +517,14 @@ def print_double_rows(rows) -> bool:
 # winspool PRINTER_STATUS_* bits. The old code read 0x10 as "busy", but
 # 0x10 is PAPER_OUT — busy is 0x200 and printing is 0x400. A printer that
 # was merely mid-job therefore reported as a fault.
+# PRINTER_ATTRIBUTE_WORK_OFFLINE. Lives in Attributes, not Status — with it
+# set, GetPrinter reports Status 0 while the spooler holds every job.
+_ATTR_WORK_OFFLINE = 0x00000400
+
+# A couple of jobs in flight is normal; a pile means one is wedged at the
+# head of the queue and everything behind it is blocked.
+_STUCK_JOB_THRESHOLD = 5
+
 _ST_PAUSED    = 0x00000001
 _ST_ERROR     = 0x00000002
 _ST_PAPER_JAM = 0x00000008
@@ -548,6 +556,18 @@ def check_printer():
             win32print.ClosePrinter(hPrinter)
     except Exception as e:
         return False, f"🔴 Cannot connect to printer '{PRINTER_NAME}': {e}"
+
+    # Attributes and cJobs are checked BEFORE Status, because the two faults
+    # they catch both leave Status at 0 — the app reported "online and ready"
+    # for a printer Windows was silently swallowing every job for.
+    if info.get("Attributes", 0) & _ATTR_WORK_OFFLINE:
+        return False, ("🔴 Windows has this printer set to 'Use Printer Offline'. "
+                       "Untick it in Devices & Printers — jobs are being queued, not printed.")
+
+    queued = info.get("cJobs", 0) or 0
+    if queued > _STUCK_JOB_THRESHOLD:
+        return False, (f"🔴 {queued} jobs are stuck in the Windows print queue. "
+                       "Clear it — new labels will queue behind them and never print.")
 
     status = info["Status"]
 

@@ -445,22 +445,36 @@ async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     queue = get_queue()
-    jobs = queue.list_jobs()
+    # list_all, not list_jobs: list_jobs returns only queued+printing, so a
+    # failed job was invisible here and the operator was never told that a
+    # print they asked for did not happen.
+    all_jobs = queue.list_all()
+    active = [j for j in all_jobs if j["status"] in ("queued", "printing")]
+    failed = [j for j in all_jobs if j["status"] == "failed"]
 
-    if not jobs:
+    if not active and not failed:
         await update.message.reply_text("📭 Print queue is empty.")
         return
 
     lines = []
-    for j in jobs:
+    for j in failed:
+        lines.append(
+            f"❌ *{j['product']}* × {j['quantity']} — FAILED, nothing printed\n"
+            f"    _{j.get('error') or 'Printer error'}_"
+        )
+    if failed and active:
+        lines.append("")
+    for j in active:
         status_icon = "🔄" if j["status"] == "printing" else "⏳"
-        product = j["product"]
-        qty = j["quantity"]
-        jid = j["id"]
-        lines.append(f"{status_icon} `{jid}` — *{product}* × {qty} ({j['status']})")
+        lines.append(
+            f"{status_icon} `{j['id']}` — *{j['product']}* × {j['quantity']} ({j['status']})"
+        )
+
+    header = f"🖨️ *Print Queue ({len(active)} active"
+    header += f", {len(failed)} failed)*" if failed else ")*"
 
     await update.message.reply_text(
-        f"🖨️ *Print Queue ({len(jobs)} job(s))*\n\n"
+        header + "\n\n"
         + "\n".join(lines)
         + "\n\n_/cancel ID — cancel a job\n/cancelall — cancel all queued_",
         parse_mode="Markdown"

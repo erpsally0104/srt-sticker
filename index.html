@@ -391,6 +391,58 @@ header {
 
 .logs-count { font-size: 0.75rem; color: var(--muted); text-align: right; margin-bottom: 0.5rem; }
 
+/* ── History multi-select ───────────────────── */
+.logs-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 0.5rem;
+}
+.log-select-all {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  user-select: none; touch-action: manipulation;
+  padding: 6px 0;
+}
+.log-select-all input { width: 20px; height: 20px; margin: 0; accent-color: var(--saffron); cursor: pointer; }
+.log-select-all input:disabled { opacity: 0.4; cursor: default; }
+.log-entry { cursor: pointer; }
+.log-entry.selected { border-color: var(--saffron); background: #fff8f0; }
+.log-check {
+  width: 22px; height: 22px; flex-shrink: 0; margin: 0;
+  accent-color: var(--saffron); pointer-events: none;
+}
+#tab-history.has-bar { padding-bottom: 4.5rem; }
+
+.reprint-bar {
+  position: fixed; left: 0; right: 0; bottom: 64px;
+  z-index: 100;
+  background: var(--ink); color: #fff;
+  border-top: 3px solid var(--saffron);
+  padding: 10px 1rem;
+  display: none;
+}
+.reprint-bar.show { display: block; }
+.reprint-bar-inner {
+  max-width: 600px; margin: 0 auto;
+  display: flex; align-items: center; gap: 8px;
+}
+.reprint-bar-count { flex: 1; min-width: 0; font-size: 0.82rem; font-weight: 600; line-height: 1.3; }
+.reprint-bar-clear {
+  padding: 9px 12px;
+  background: transparent; color: #fff;
+  border: 1.5px solid rgba(255,255,255,0.5);
+  font-family: 'DM Sans', sans-serif; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; touch-action: manipulation; white-space: nowrap;
+}
+.reprint-bar-go {
+  padding: 9px 14px;
+  background: var(--saffron); color: #fff;
+  border: 2px solid #fff;
+  font-family: 'Black Han Sans', sans-serif; font-size: 0.95rem; letter-spacing: 1px;
+  cursor: pointer; touch-action: manipulation; white-space: nowrap;
+  box-shadow: 3px 3px 0 rgba(0,0,0,0.4);
+}
+.reprint-bar-go:active { transform: translate(1px,1px); box-shadow: 2px 2px 0 rgba(0,0,0,0.4); }
+
 /* ── Queue ──────────────────────────────────── */
 .queue-item {
   display: flex; align-items: center; gap: 10px;
@@ -399,6 +451,11 @@ header {
 }
 .queue-item.printing { border-color: var(--saffron); background: #fff8f0; }
 .queue-item.queued   { border-color: #ddd; }
+.queue-item.failed   { border-color: var(--red); background: var(--red-light); }
+.queue-error {
+  font-size: 0.75rem; font-weight: 600; color: var(--red);
+  margin-top: 4px; line-height: 1.35;
+}
 .queue-status {
   font-size: 1.1rem; flex-shrink: 0;
 }
@@ -535,6 +592,10 @@ header {
 .job-card-clone:focus-visible,
 .qty-preset:focus-visible,
 .log-reprint:focus-visible,
+.log-entry:focus-visible,
+.log-select-all input:focus-visible,
+.reprint-bar-clear:focus-visible,
+.reprint-bar-go:focus-visible,
 .queue-cancel:focus-visible,
 .product-item-edit:focus-visible,
 .product-item-remove:focus-visible {
@@ -630,9 +691,11 @@ header {
             <label class="form-label" style="margin-bottom:8px;">Use By</label>
             <input type="date" id="bestBeforeDate" style="width:100%; border:2px solid var(--border); padding:10px 12px;
               font-family:'DM Sans',sans-serif; font-size:16px; background:var(--paper);
-              color:var(--ink); outline:none; border-radius:0; -webkit-appearance:none; appearance:none;"/>
+              color:var(--ink); outline:none; border-radius:0; -webkit-appearance:none; appearance:none;"
+              onchange="onBestBeforeChange()"/>
           </div>
         </div>
+        <div id="dateNotice" class="roll-hint" style="display:none;" aria-live="polite"></div>
         <div style="margin-top:8px;">
           <label class="form-label" style="margin-bottom:8px;">Roll Type (loaded in printer)</label>
           <select id="rollType" onchange="onRollTypeChange()" aria-label="Roll type loaded in printer">
@@ -712,9 +775,24 @@ header {
             <option value="">All users</option>
           </select>
         </div>
-        <div class="logs-count" id="logsCount"></div>
+        <div class="logs-toolbar">
+          <label class="log-select-all" for="logSelectAll">
+            <input type="checkbox" id="logSelectAll" onchange="toggleSelectAllLogs(this.checked)" disabled/>
+            Select all shown
+          </label>
+          <div class="logs-count" id="logsCount" style="margin:0;"></div>
+        </div>
         <div id="logsContainer">
           <div style="text-align:center; color:var(--muted); padding:2rem;">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Multi-select reprint bar — shown while history items are ticked -->
+      <div class="reprint-bar" id="reprintBar" role="region" aria-label="Reprint selected history items">
+        <div class="reprint-bar-inner">
+          <div class="reprint-bar-count" id="reprintBarCount" aria-live="polite">0 items</div>
+          <button type="button" class="reprint-bar-clear" onclick="clearLogSelection()">Clear</button>
+          <button type="button" class="reprint-bar-go" onclick="reprintSelected()">🔄 REPRINT SELECTED</button>
         </div>
       </div>
     </div>
@@ -828,6 +906,17 @@ header {
 
 <script>
 const API = 'https://canine-wrecker-mobile.ngrok-free.dev/api';
+
+// Escape anything that came from a product name, a log row or an error
+// string before it goes into innerHTML. Product names are operator-supplied
+// and reach several templates unescaped, which is a stored-XSS path to the
+// admin token in localStorage.
+function h(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
 
 // ── Tokens ───────────────────────────────────
 function saveTokens(d) {
@@ -1058,6 +1147,12 @@ function onPackedDateChange() {
   bb.setMonth(bb.getMonth() + 3);
   const bbEl = document.getElementById('bestBeforeDate');
   if (bbEl) bbEl.value = formatDateInput(bb);
+  hideDateNotice();
+  saveDraft();
+}
+
+function onBestBeforeChange() {
+  hideDateNotice();
   saveDraft();
 }
 
@@ -1105,7 +1200,7 @@ const escJs = s => (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 function getUOM(val) {
   const n = parseFloat(val);
   if (isNaN(n)) return {label:'—', cls:''};
-  return n < 100 ? {label:'KGS', cls:'kgs'} : {label:'GMS', cls:'gms'};
+  return n < 100 ? {label:'kg', cls:'kgs'} : {label:'gm', cls:'gms'};
 }
 
 function updateUOM(id) {
@@ -1303,7 +1398,7 @@ async function addNewProduct(id) {
   if (!qty || qty < 1) { showToast('Fill quantity first'); return; }
   const wtRaw = (document.getElementById(`wt-${id}`)?.value||'').trim();
   const wtNum = parseFloat(wtRaw);
-  let weight  = !isNaN(wtNum) ? (wtNum<100?`${wtNum} KGS`:`${wtNum} GMS`) : '500 GMS';
+  let weight  = !isNaN(wtNum) ? (wtNum<100?`${wtNum} kg`:`${wtNum} gm`) : '500 gm';
   const hotel = document.getElementById('printHotel')?.value || 'general';
   try {
     await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
@@ -1376,6 +1471,7 @@ async function submitPrint() {
     comboState = {};
     rowId=0; addRow();
     localStorage.removeItem(DRAFT_KEY);
+    hideDateNotice();
     updateSummary();
     // Auto-switch to queue tab so user can see their jobs
     switchTab('queue');
@@ -1413,6 +1509,7 @@ function resetAll() {
   comboState = {};
   rowId=0; addRow();
   localStorage.removeItem(DRAFT_KEY);
+  hideDateNotice();
   updateSummary();
   showToast('Cleared');
 }
@@ -1683,7 +1780,7 @@ async function saveProduct(idx, oldName) {
   const wtNum = parseFloat(newWtRaw);
   let newWeight = newWtRaw.toUpperCase();
   if (!isNaN(wtNum) && !newWtRaw.match(/[a-zA-Z]/)) {
-    newWeight = wtNum < 100 ? `${wtNum} KGS` : `${wtNum} GMS`;
+    newWeight = wtNum < 100 ? `${wtNum} kg` : `${wtNum} gm`;
   }
 
   try {
@@ -1720,6 +1817,12 @@ async function removeProduct(name) {
 }
 
 // ── Logs ─────────────────────────────────────
+let logsById      = {};        // id → log row, for every row shown or still selected
+let selectedLogs  = new Set(); // ids ticked for multi-reprint (kept across filter changes)
+let visibleLogIds = [];        // ids currently rendered, in list order (newest first)
+
+const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
 async function loadLogs() {
   const c       = document.getElementById('logsContainer');
   const product = (document.getElementById('logFilterProduct')?.value||'').trim();
@@ -1736,31 +1839,105 @@ async function loadLogs() {
       sel.style.display = 'block';
       const cur = sel.value;
       sel.innerHTML = '<option value="">All users</option>' +
-        data.usernames.map(u=>`<option value="${u}" ${u===cur?'selected':''}>${u}</option>`).join('');
+        data.usernames.map(u=>`<option value="${escHtml(u)}" ${u===cur?'selected':''}>${escHtml(u)}</option>`).join('');
     }
     document.getElementById('logsCount').textContent = `${data.logs.length} record${data.logs.length!==1?'s':''}`;
-    if (!data.logs.length) { c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">No history yet.</div>'; return; }
+
+    // Remember rows for reprint: anything still selected plus everything now shown.
+    const keep = {};
+    selectedLogs.forEach(id => { if (logsById[id]) keep[id] = logsById[id]; });
+    data.logs.forEach(l => { keep[l.id] = l; });
+    logsById      = keep;
+    visibleLogIds = data.logs.map(l => l.id);
+
+    if (!data.logs.length) {
+      c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">No history yet.</div>';
+      syncLogSelectionUI();
+      return;
+    }
     c.innerHTML = data.logs.map(l=>{
-      const esc = s => (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      const on = selectedLogs.has(l.id);
       return `
-      <div class="log-entry">
+      <div class="log-entry ${on?'selected':''}" id="log-${l.id}" role="checkbox" aria-checked="${on}" tabindex="0"
+        onclick="toggleLogSelect(${l.id})" onkeydown="onLogKey(event, ${l.id})">
         <div class="log-entry-top">
+          <input type="checkbox" class="log-check" ${on?'checked':''} tabindex="-1" aria-hidden="true"/>
           <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap;">
-            <span class="log-product">${l.product}</span>
-            <span class="log-qty">× ${l.quantity} · ${l.weight}</span>
+            <span class="log-product">${escHtml(l.product)}</span>
+            <span class="log-qty">× ${l.quantity} · ${escHtml(l.weight)}</span>
           </div>
-          <button class="log-reprint" title="Reprint" onclick="reprintFromLog('${esc(l.product)}','${esc(l.weight)}','${esc(l.packed_on)}','${esc(l.best_before)}',${l.quantity})">🔄</button>
+          <button class="log-reprint" title="Reprint this item" aria-label="Reprint this item"
+            onclick="event.stopPropagation(); reprintFromLog(${l.id})">🔄</button>
         </div>
         <div class="log-meta">
-          <span class="badge badge-${l.source}">${l.source}</span>
-          ${data.is_admin ? `<span class="badge badge-user">${l.username}</span>` : ''}
-          · ${l.timestamp.substring(0,16).replace('T',' ')}
-          · Batch: <span class="log-batch">${l.batch_no}</span><br>
-          Packed: ${l.packed_on} · Use By: ${l.best_before}
+          <span class="badge badge-${escHtml(l.source)}">${escHtml(l.source)}</span>
+          ${data.is_admin ? `<span class="badge badge-user">${escHtml(l.username)}</span>` : ''}
+          · ${escHtml((l.timestamp||'').substring(0,16).replace('T',' '))}
+          · Batch: <span class="log-batch">${escHtml(l.batch_no)}</span><br>
+          Packed: ${escHtml(l.packed_on)} · Use By: ${escHtml(l.best_before)}
         </div>
       </div>`;
     }).join('');
+    syncLogSelectionUI();
   } catch { c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">Failed to load.</div>'; }
+}
+
+// ── History selection ────────────────────────
+function toggleLogSelect(id) {
+  if (selectedLogs.has(id)) selectedLogs.delete(id); else selectedLogs.add(id);
+  syncLogSelectionUI();
+}
+
+function onLogKey(e, id) {
+  if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleLogSelect(id); }
+}
+
+function toggleSelectAllLogs(checked) {
+  visibleLogIds.forEach(id => { if (checked) selectedLogs.add(id); else selectedLogs.delete(id); });
+  syncLogSelectionUI();
+}
+
+function clearLogSelection() {
+  selectedLogs.clear();
+  syncLogSelectionUI();
+}
+
+function syncLogSelectionUI() {
+  let shownSel = 0;
+  visibleLogIds.forEach(id => {
+    const on = selectedLogs.has(id);
+    if (on) shownSel++;
+    const el = document.getElementById(`log-${id}`);
+    if (!el) return;
+    el.classList.toggle('selected', on);
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+    const cb = el.querySelector('.log-check');
+    if (cb) cb.checked = on;
+  });
+
+  const all = document.getElementById('logSelectAll');
+  if (all) {
+    all.disabled      = visibleLogIds.length === 0;
+    all.checked       = visibleLogIds.length > 0 && shownSel === visibleLogIds.length;
+    all.indeterminate = shownSel > 0 && shownSel < visibleLogIds.length;
+  }
+
+  const n   = selectedLogs.size;
+  const cnt = document.getElementById('reprintBarCount');
+  if (cnt) {
+    let stickers = 0;
+    selectedLogs.forEach(id => { stickers += parseInt(logsById[id]?.quantity) || 0; });
+    const hidden = n - shownSel;
+    cnt.textContent = `${n} item${n!==1?'s':''} · ${stickers} sticker${stickers!==1?'s':''}`
+                    + (hidden > 0 ? ` (${hidden} hidden by filter)` : '');
+  }
+  const bar = document.getElementById('reprintBar');
+  if (bar) {
+    const nav = document.querySelector('.bottom-nav');
+    if (nav && nav.offsetHeight) bar.style.bottom = nav.offsetHeight + 'px';
+    bar.classList.toggle('show', n > 0);
+  }
+  document.getElementById('tab-history')?.classList.toggle('has-bar', n > 0);
 }
 
 // ── Queue ─────────────────────────────────────
@@ -1774,37 +1951,45 @@ async function loadQueue() {
     const data = await res.json();
     const jobs = data.jobs || [];
 
-    // Filter to active jobs (queued + printing)
+    // Failed jobs are shown alongside active ones. The queue records
+    // status "failed" and an error message, and both used to be filtered
+    // out here — so a printer fault looked identical to a finished shift.
     const active = jobs.filter(j => j.status === 'queued' || j.status === 'printing');
-    document.getElementById('queueCount').textContent = `${active.length} active job${active.length !== 1 ? 's' : ''}`;
+    const failed = jobs.filter(j => j.status === 'failed');
+    document.getElementById('queueCount').textContent =
+      `${active.length} active job${active.length !== 1 ? 's' : ''}` +
+      (failed.length ? ` · ${failed.length} failed` : '');
 
-    if (!active.length) {
+    if (!active.length && !failed.length) {
       c.innerHTML = '<div class="queue-empty">📭 Queue is empty — all jobs processed.</div>';
       stopQueueRefresh();
       return;
     }
 
-    c.innerHTML = active.map(j => {
+    // Failures first: they need attention, the active ones are just waiting.
+    c.innerHTML = failed.concat(active).map(j => {
+      const isFailed   = j.status === 'failed';
       const isPrinting = j.status === 'printing';
-      const icon = isPrinting ? '🔄' : '⏳';
-      const cls  = isPrinting ? 'printing' : 'queued';
-      const canCancel = !isPrinting;
+      const icon = isFailed ? '❌' : (isPrinting ? '🔄' : '⏳');
+      const cls  = isFailed ? 'failed' : (isPrinting ? 'printing' : 'queued');
+      const canCancel = !isPrinting && !isFailed;
       return `
         <div class="queue-item ${cls}">
           <div class="queue-status">${icon}</div>
           <div class="queue-info">
-            <div class="queue-product">${j.product} × ${j.quantity}</div>
+            <div class="queue-product">${h(j.product)} × ${j.quantity}</div>
             <div class="queue-detail">
-              ${j.weight ? j.weight + ' · ' : ''}${j.status}${j.batch_no ? ' · Batch: ' + j.batch_no : ''} · ${j.created_at}
+              ${j.weight ? h(j.weight) + ' · ' : ''}${h(j.status)}${j.batch_no ? ' · Batch: ' + h(j.batch_no) : ''} · ${h(j.created_at)}
               ${j.source === 'telegram' ? ' · <span class="badge badge-telegram">telegram</span>' : ''}
             </div>
+            ${isFailed ? `<div class="queue-error">${h(j.error || 'Printer error')} — nothing was printed for this job.</div>` : ''}
           </div>
-          <button class="queue-cancel" onclick="cancelQueueJob('${j.id}')" ${canCancel ? '' : 'disabled'} title="${isPrinting ? 'Currently printing' : 'Cancel'}">✕</button>
+          <button class="queue-cancel" onclick="cancelQueueJob('${j.id}')" ${canCancel ? '' : 'disabled'} title="${isFailed ? 'Failed' : (isPrinting ? 'Currently printing' : 'Cancel')}">✕</button>
         </div>`;
     }).join('');
 
     // Auto-refresh while queue has active jobs
-    startQueueRefresh();
+    if (active.length) startQueueRefresh(); else stopQueueRefresh();
   } catch {
     c.innerHTML = '<div class="queue-empty">⚠️ Failed to load queue.</div>';
   }
@@ -1862,47 +2047,118 @@ async function cancelAllQueue() {
 }
 
 // ── Reprint from history ─────────────────────
-function reprintFromLog(product, weight, packedOn, bestBefore, quantity) {
-  // Switch to print tab
-  switchTab('print');
+function reprintFromLog(id) {
+  const l = logsById[id];
+  if (!l) { showToast('Item not found — refresh history'); return; }
+  fillFormFromLogs([l]);
+}
 
-  // Ensure product label mode
+function reprintSelected() {
+  // Newest first (ids descend), matching the order shown in History
+  const logs = Array.from(selectedLogs).sort((a,b)=>b-a).map(id => logsById[id]).filter(Boolean);
+  if (!logs.length) { showToast('Select items to reprint'); return; }
+  if (fillFormFromLogs(logs)) clearLogSelection();
+}
+
+function formHasContent() {
+  return Array.from(document.querySelectorAll('.job-card')).some(row => {
+    const id = row.id.replace('row-','');
+    return !!((document.getElementById(`prod-${id}`)?.value||'').trim()
+           || (document.getElementById(`qty-${id}`)?.value||'').trim());
+  });
+}
+
+// Refill the print form from one or more history rows so the user can edit and
+// print again. Each row becomes one item line (product / quantity / weight). The
+// form has a single date pair, so dates come from the first (most recent) row and
+// a notice is shown if the selected rows disagreed.
+// Returns false if the user declined to replace what is already in the form.
+function fillFormFromLogs(logs) {
+  if (!logs || !logs.length) return false;
+  if (formHasContent() && !confirm('Replace the items currently in the print form?')) return false;
+
+  switchTab('print');
   document.getElementById('stickerType').value = 'product';
   onStickerTypeChange();
 
-  // Parse weight into numeric value for the weight input
-  const wtNum = parseFloat(weight) || '';
-
-  // Clear existing rows and add one pre-filled row
   document.getElementById('jobRows').innerHTML = '';
   document.getElementById('results').innerHTML = '';
+  comboState = {};
   rowId = 0;
-  addRow(product, String(quantity), String(wtNum));
+  logs.forEach(l => {
+    const wtNum = parseFloat(l.weight);
+    addRow(l.product || '', String(l.quantity ?? ''), isNaN(wtNum) ? '' : String(wtNum));
+  });
+  ensureTrailingRow();
 
-  // Set dates — convert DD/MM/YY to YYYY-MM-DD for date input
-  if (packedOn) {
-    const pd = parseLabelDate(packedOn);
-    if (pd) document.getElementById('packedDate').value = pd;
-  }
-  if (bestBefore) {
-    const bb = parseLabelDate(bestBefore);
-    if (bb) document.getElementById('bestBeforeDate').value = bb;
+  // Dates: start from defaults, then apply the first row's printed dates where they parse.
+  setDefaultDates();
+  const first = logs[0];
+  const pd = parseLabelDate(first.packed_on, first.batch_no, false);
+  const bb = parseLabelDate(first.best_before, first.batch_no, true);
+  if (pd) document.getElementById('packedDate').value     = pd;
+  if (bb) document.getElementById('bestBeforeDate').value = bb;
+
+  const mixed = logs.some(l => l.packed_on !== first.packed_on || l.best_before !== first.best_before);
+  if (mixed) {
+    showDateNotice(`⚠️ Selected items had different dates. Using Packed <strong>${escHtml(first.packed_on)}</strong> · Use By <strong>${escHtml(first.best_before)}</strong> from the most recent item — adjust above if needed.`);
+  } else {
+    hideDateNotice();
   }
 
-  showToast('📋 Form loaded — edit and print');
-  // Scroll to top
+  refreshAfterChange();
+  showToast(logs.length === 1 ? '📋 Form loaded — edit and print' : `📋 ${logs.length} items loaded — edit and print`);
   window.scrollTo({top: 0, behavior: 'smooth'});
+  return true;
 }
 
-function parseLabelDate(dateStr) {
-  // Converts DD/MM/YY to YYYY-MM-DD for <input type="date">
+function showDateNotice(html) {
+  const el = document.getElementById('dateNotice');
+  if (!el) return;
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+function hideDateNotice() {
+  const el = document.getElementById('dateNotice');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
+const MONTHS_UPPER = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+function batchDate(batchNo) {
+  // Batch numbers are SRT + DDMMYY + 3-digit sequence → {day, month, year} or null
+  const m = String(batchNo||'').match(/^SRT(\d{2})(\d{2})(\d{2})\d{3}$/);
+  return m ? { day: parseInt(m[1]), month: parseInt(m[2]), year: 2000 + parseInt(m[3]) } : null;
+}
+
+function parseLabelDate(dateStr, batchNo, endOfMonth) {
+  // Converts a printed label date back to YYYY-MM-DD for <input type="date">.
+  //   DD/MM/YY or DD/MM/YYYY (also with '-')          → exact date
+  //   MON YYYY (e.g. SEP 2026; shelf life > 3 months) → month only. Use By takes the
+  //   last day of that month; Packed takes the day from the batch number when it is
+  //   in the same month (else the 1st) — so the reprint reads the same as the original.
   if (!dateStr) return '';
-  const parts = dateStr.split('/');
-  if (parts.length !== 3) return '';
-  let [dd, mm, yy] = parts;
-  // Handle 2-digit year: assume 20xx
-  let yyyy = yy.length === 2 ? '20' + yy : yy;
-  return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+  const s = String(dateStr).trim();
+  let m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/);
+  if (m) {
+    const yyyy = m[3].length === 2 ? '20' + m[3] : m[3];
+    return `${yyyy}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  }
+  m = s.match(/^([A-Za-z]{3})\s+(\d{4})$/);
+  if (m) {
+    const month = MONTHS_UPPER.indexOf(m[1].toUpperCase()) + 1;
+    if (!month) return '';
+    const year = parseInt(m[2]);
+    const dim  = new Date(year, month, 0).getDate();   // days in that month
+    let day = 1;
+    if (endOfMonth) day = dim;
+    else {
+      const b = batchDate(batchNo);
+      if (b && b.month === month && b.year === year) day = b.day;
+    }
+    return `${year}-${String(month).padStart(2,'0')}-${String(Math.min(day, dim)).padStart(2,'0')}`;
+  }
+  return '';
 }
 
 // ── Sticker type toggle ──────────────────────

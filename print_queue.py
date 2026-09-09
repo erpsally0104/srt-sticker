@@ -5,6 +5,7 @@ Jobs are added to a queue and processed one at a time by a background worker.
 Each job gets a unique ID so it can be listed or cancelled before it prints.
 """
 
+import logging
 import threading
 import time
 import uuid
@@ -18,6 +19,8 @@ from printer import print_label, render_label, print_double_rows
 from batch_manager import get_next_batch_number
 from logger import log_print
 from settings_manager import get_roll_type
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -138,14 +141,26 @@ class PrintQueue:
         using the printer's native copy count). In 'double' mode all currently
         queued labels are flattened into a single FIFO sequence and printed two
         side by side per row; an odd final label prints alone (right column blank).
+
+        The body is wrapped because this runs on a daemon thread with nothing
+        above it to catch anything. get_roll_type() reads settings.json and
+        raises PermissionError when the sibling process holds the file open;
+        _log_job writes to users.db and raises OperationalError when that lock
+        is contended. Either one, unhandled, killed the worker for good: jobs
+        kept queueing, the UI spinner turned forever, and nothing printed again
+        until someone restarted run.bat — with no message anywhere saying why.
         """
         while True:
-            if get_roll_type() == "double":
-                did_work = self._process_double_batch()
-            else:
-                did_work = self._process_single_next()
-            if not did_work:
-                time.sleep(0.3)
+            try:
+                if get_roll_type() == "double":
+                    did_work = self._process_double_batch()
+                else:
+                    did_work = self._process_single_next()
+                if not did_work:
+                    time.sleep(0.3)
+            except Exception:
+                _log.exception("Print worker hit an error; continuing.")
+                time.sleep(1)
 
     def _log_job(self, job):
         """Log a completed product job (ingredients labels are not logged)."""
@@ -179,11 +194,19 @@ class PrintQueue:
         with self._lock:
             if success:
                 job.status = "done"
-                self._log_job(job)
             else:
                 job.status = "failed"
                 if not job.error:
                     job.error = "Printer error"
+
+        # Logged outside the lock: this is a SQLite write against a users.db
+        # that two processes contend for, so it can block for the full timeout.
+        # A failure to log must not discard a print that actually happened.
+        if success:
+            try:
+                self._log_job(job)
+            except Exception:
+                _log.exception("Could not write print log for job %s", job.id)
 
         self._cleanup()
         return True

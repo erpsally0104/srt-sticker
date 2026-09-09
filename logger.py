@@ -6,7 +6,10 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "users.db")
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    # timeout matches batch_manager: bot.py and server.py are separate
+    # processes contending for this file, and the 5s default was short
+    # enough to surface as OperationalError on the print worker thread.
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     return conn
 
