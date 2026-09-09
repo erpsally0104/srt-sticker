@@ -1189,7 +1189,7 @@ const escJs = s => (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 function getUOM(val) {
   const n = parseFloat(val);
   if (isNaN(n)) return {label:'—', cls:''};
-  return n < 100 ? {label:'kg', cls:'kgs'} : {label:'gm', cls:'gms'};
+  return n < 100 ? {label:'kg', cls:'kgs'} : {label:'g', cls:'gms'};
 }
 
 function updateUOM(id) {
@@ -1387,7 +1387,7 @@ async function addNewProduct(id) {
   if (!qty || qty < 1) { showToast('Fill quantity first'); return; }
   const wtRaw = (document.getElementById(`wt-${id}`)?.value||'').trim();
   const wtNum = parseFloat(wtRaw);
-  let weight  = !isNaN(wtNum) ? (wtNum<100?`${wtNum} kg`:`${wtNum} gm`) : '500 gm';
+  let weight  = !isNaN(wtNum) ? (wtNum<100?`${wtNum} kg`:`${wtNum} g`) : '500 g';
   const hotel = document.getElementById('printHotel')?.value || 'general';
   try {
     await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
@@ -1769,7 +1769,7 @@ async function saveProduct(idx, oldName) {
   const wtNum = parseFloat(newWtRaw);
   let newWeight = newWtRaw.toUpperCase();
   if (!isNaN(wtNum) && !newWtRaw.match(/[a-zA-Z]/)) {
-    newWeight = wtNum < 100 ? `${wtNum} kg` : `${wtNum} gm`;
+    newWeight = wtNum < 100 ? `${wtNum} kg` : `${wtNum} g`;
   }
 
   try {
