@@ -907,17 +907,6 @@ header {
 <script>
 const API = 'https://canine-wrecker-mobile.ngrok-free.dev/api';
 
-// Escape anything that came from a product name, a log row or an error
-// string before it goes into innerHTML. Product names are operator-supplied
-// and reach several templates unescaped, which is a stored-XSS path to the
-// admin token in localStorage.
-function h(v) {
-  if (v === null || v === undefined) return '';
-  return String(v).replace(/[&<>"']/g, c => (
-    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
-  ));
-}
-
 // ── Tokens ───────────────────────────────────
 function saveTokens(d) {
   localStorage.setItem('access_token',  d.access_token);
@@ -1977,12 +1966,12 @@ async function loadQueue() {
         <div class="queue-item ${cls}">
           <div class="queue-status">${icon}</div>
           <div class="queue-info">
-            <div class="queue-product">${h(j.product)} × ${j.quantity}</div>
+            <div class="queue-product">${escHtml(j.product)} × ${j.quantity}</div>
             <div class="queue-detail">
-              ${j.weight ? h(j.weight) + ' · ' : ''}${h(j.status)}${j.batch_no ? ' · Batch: ' + h(j.batch_no) : ''} · ${h(j.created_at)}
+              ${j.weight ? escHtml(j.weight) + ' · ' : ''}${escHtml(j.status)}${j.batch_no ? ' · Batch: ' + escHtml(j.batch_no) : ''} · ${escHtml(j.created_at)}
               ${j.source === 'telegram' ? ' · <span class="badge badge-telegram">telegram</span>' : ''}
             </div>
-            ${isFailed ? `<div class="queue-error">${h(j.error || 'Printer error')} — nothing was printed for this job.</div>` : ''}
+            ${isFailed ? `<div class="queue-error">${escHtml(j.error || 'Printer error')} — nothing was printed for this job.</div>` : ''}
           </div>
           <button class="queue-cancel" onclick="cancelQueueJob('${j.id}')" ${canCancel ? '' : 'disabled'} title="${isFailed ? 'Failed' : (isPrinting ? 'Currently printing' : 'Cancel')}">✕</button>
         </div>`;
