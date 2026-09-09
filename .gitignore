@@ -17,3 +17,6 @@ __pycache__/
 batch.json
 *.json.bak
 *.json.tmp
+
+# User list (Telegram handles + admin) - runtime state, not source
+users.json
