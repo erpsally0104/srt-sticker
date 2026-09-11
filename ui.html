@@ -673,6 +673,7 @@ header {
             <select id="stickerType" onchange="onStickerTypeChange()">
               <option value="product" selected>🏷️ Product Label</option>
               <option value="ingredients">📝 Ingredients Label</option>
+              <option value="fssai">🛡️ FSSAI Logo Label</option>
             </select>
           </div>
           <div style="flex:1;" id="printHotelWrap">
@@ -740,6 +741,23 @@ header {
           <span id="ingredientsPrintBtnContent">🖨️ PRINT INGREDIENTS</span>
         </button>
         <button class="btn-secondary" onclick="resetIngredients()">↺ RESET</button>
+      </div>
+
+      <!-- FSSAI logo label UI -->
+      <div class="card" id="fssaiSection" style="display:none;">
+        <div class="form-group">
+          <label class="form-label" for="fssaiNumber">FSSAI Lic. Number</label>
+          <input type="text" id="fssaiNumber" inputmode="numeric" autocomplete="off" maxlength="20"
+            placeholder="14-digit number"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" for="fssaiQty">Quantity</label>
+          <input type="number" id="fssaiQty" placeholder="Number of stickers" min="1" max="500" value="1"/>
+        </div>
+        <button class="btn-primary" id="fssaiPrintBtn" onclick="submitFssaiPrint()" style="margin-top:1rem;">
+          <span id="fssaiPrintBtnContent">🖨️ PRINT FSSAI LOGO</span>
+        </button>
+        <button class="btn-secondary" onclick="resetFssai()">↺ RESET</button>
       </div>
 
       <div id="results"></div>
@@ -2207,6 +2225,7 @@ function onStickerTypeChange() {
   const type = document.getElementById('stickerType').value;
   document.getElementById('productSection').style.display     = type === 'product'     ? 'block' : 'none';
   document.getElementById('ingredientsSection').style.display  = type === 'ingredients' ? 'block' : 'none';
+  document.getElementById('fssaiSection').style.display        = type === 'fssai'       ? 'block' : 'none';
   document.getElementById('printHotelWrap').style.display      = type === 'product'     ? 'block' : 'none';
   document.getElementById('dateFieldsWrap').style.display      = type === 'product'     ? 'flex'  : 'none';
   document.getElementById('results').innerHTML = '';
@@ -2289,6 +2308,94 @@ function resetIngredients() {
   document.getElementById('results').innerHTML     = '';
   document.getElementById('ingredientsText')?.classList.remove('error');
   document.getElementById('ingredientsQty')?.classList.remove('error');
+  showToast('Cleared');
+}
+
+// ── FSSAI logo print ─────────────────────────
+async function submitFssaiPrint() {
+  const btn     = document.getElementById('fssaiPrintBtn');
+  const content = document.getElementById('fssaiPrintBtnContent');
+  const numEl   = document.getElementById('fssaiNumber');
+  const qtyEl   = document.getElementById('fssaiQty');
+  // Spaces are dropped so a number copied as "1362 0011 0005 63" still reads
+  const number  = numEl.value.replace(/\s+/g, '');
+  const qty     = parseInt(qtyEl.value) || 0;
+
+  numEl.classList.remove('error');
+  qtyEl.classList.remove('error');
+
+  if (!/^[0-9]{14}$/.test(number)) {
+    numEl.classList.add('error');
+    showToast('FSSAI number must be 14 digits');
+    return;
+  }
+  if (qty < 1 || qty > 500) {
+    qtyEl.classList.add('error');
+    showToast('Quantity must be 1–500');
+    return;
+  }
+
+  // ── Quantity > 50 confirmation ──
+  if (qty > 50) {
+    if (!confirm(`⚠️ You are about to print ${qty} FSSAI logo stickers. Are you sure?`)) return;
+  }
+
+  // Warn if the printer looks offline — jobs still queue, but flag it.
+  if (printerOnline === false) {
+    if (!confirm('⚠️ The printer appears to be offline.\n\nYour job will be queued and will print automatically once the printer is back online. Continue?')) return;
+  }
+
+  btn.disabled = true;
+  content.innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const res = await apiFetch(`${API}/print`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        jobs: [{ line: `${number} ;; f ${qty}` }]
+      })
+    });
+    if (!res) return;
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Could not queue the print'); return; }
+    showFssaiResults(data.results, number);
+  } catch { showToast('❌ Cannot reach server'); }
+  finally { btn.disabled = false; content.innerHTML = '🖨️ PRINT FSSAI LOGO'; }
+}
+
+function showFssaiResults(results, number) {
+  const c = document.getElementById('results');
+  c.innerHTML = '';
+  results.forEach(r => {
+    const d = document.createElement('div');
+    d.className = `result-item ${r.success ? 'success' : 'fail'}`;
+    if (r.success) {
+      d.innerHTML = `
+        <div class="result-icon">✅</div>
+        <div>
+          <div class="result-product">FSSAI Logo × ${r.quantity}</div>
+          <div class="result-detail">${escHtml(number)} · queued for printing</div>
+        </div>`;
+    } else {
+      d.innerHTML = `
+        <div class="result-icon">❌</div>
+        <div>
+          <div class="result-product">FSSAI Logo</div>
+          <div class="result-detail" style="color:var(--red)">${escHtml(r.error || 'Failed')}</div>
+        </div>`;
+    }
+    c.appendChild(d);
+  });
+  if (results.length) c.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function resetFssai() {
+  document.getElementById('fssaiNumber').value = '';
+  document.getElementById('fssaiQty').value    = '1';
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('fssaiNumber').classList.remove('error');
+  document.getElementById('fssaiQty').classList.remove('error');
   showToast('Cleared');
 }
 

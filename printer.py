@@ -141,10 +141,11 @@ VEG_MARK_MARGIN = 6    # px of clear space between the name and the mark
 _logo_cache = {}
 
 
-def load_fssai_logo(height=FSSAI_LOGO_H):
+def load_fssai_logo(height=FSSAI_LOGO_H, max_width=None):
     """
     Load fssai_logo.png, scaled to `height` px and reduced to pure black
-    and white for the thermal head.
+    and white for the thermal head. `max_width`, when given, caps the width
+    as well, and the height then shrinks to keep the artwork's proportions.
 
     The mark is reduced by its ALPHA channel, not its brightness. The FSSAI
     logo is multi-coloured -- an indigo wordmark between an orange rule and a
@@ -169,7 +170,7 @@ def load_fssai_logo(height=FSSAI_LOGO_H):
     except OSError:
         return None
 
-    key = (height, FSSAI_LOGO_ALPHA_T, mtime)
+    key = (height, max_width, FSSAI_LOGO_ALPHA_T, mtime)
     if key in _logo_cache:
         return _logo_cache[key]
 
@@ -178,6 +179,8 @@ def load_fssai_logo(height=FSSAI_LOGO_H):
         src = src.convert("RGBA")
         w, h = src.size
         target = (max(1, round(w * height / h)), height)
+        if max_width and target[0] > max_width:
+            target = (max_width, max(1, round(h * max_width / w)))
 
         alpha = src.split()[-1]
         if alpha.getextrema()[0] < 255:
@@ -197,7 +200,10 @@ def load_fssai_logo(height=FSSAI_LOGO_H):
         print(f"[Printer Warning] Could not load {FSSAI_LOGO_PATH}: {e}")
         return None
 
-    _logo_cache.clear()      # only ever one logo at one size
+    # Room for the licence line's logo and the logo sticker's. A size that
+    # has gone stale (label resized, artwork replaced) ages out with the rest.
+    if len(_logo_cache) >= 4:
+        _logo_cache.clear()
     _logo_cache[key] = logo
     return logo
 
@@ -419,11 +425,100 @@ def build_ingredients_label_image(req):
     return img
 
 
+# ── FSSAI logo sticker ────────────────────────
+# Carries only the FSSAI logo and a licence number. Both are sized from
+# the label rather than fixed, so the pair still fills the sticker if the
+# label size in settings changes.
+FSSAI_STICKER_MARGIN_MM = 2      # clear space kept on every edge
+FSSAI_STICKER_TRACKING  = 0.04   # extra space between digits, in em
+FSSAI_STICKER_GAP       = 0.45   # logo-to-number gap, as a share of digit height
+
+
+def _tracked_bbox(draw, text, font, tracking):
+    """Ink box of `text` with `tracking` px added after each character, baseline at y=0."""
+    boxes, x = [], 0
+    for ch in text:
+        boxes.append(draw.textbbox((x, 0), ch, font=font, anchor="ls"))
+        x += font.getlength(ch) + tracking
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes),
+            max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
+def _fit_sticker_number(draw, text, max_width):
+    """
+    Largest Arial Narrow Bold size at which the tracked `text` fits
+    `max_width`. Returns (font, tracking_px, ink_box).
+    """
+    lo, hi, best = 8, 300, None
+    while lo <= hi:
+        size     = (lo + hi) // 2
+        font     = get_font(FONT_ARIAL_NB, size, FONT_ARIAL_BD)
+        tracking = round(size * FSSAI_STICKER_TRACKING)
+        box      = _tracked_bbox(draw, text, font, tracking)
+        if box[2] - box[0] <= max_width:
+            best, lo = (font, tracking, box), size + 1
+        else:
+            hi = size - 1
+    if best is None:
+        font = get_font(FONT_ARIAL_NB, 8, FONT_ARIAL_BD)
+        best = (font, 0, _tracked_bbox(draw, text, font, 0))
+    return best
+
+
+def build_fssai_label_image(req):
+    """
+    Build an FSSAI logo sticker: the logo as large as the label allows,
+    and the licence number on one line beneath it, set to the logo's width.
+    Nothing else is printed.
+    """
+    img  = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
+    draw = ImageDraw.Draw(img)
+
+    margin = _mm_to_px(FSSAI_STICKER_MARGIN_MM)
+    box_w  = LABEL_W_PX - 2 * margin
+    box_h  = LABEL_H_PX - 2 * margin
+    number = req.fssai_number
+
+    # The logo is the whole point of this sticker, so missing artwork fails
+    # the job rather than printing a bare number.
+    logo = load_fssai_logo(height=box_h, max_width=box_w)
+    if logo is None:
+        raise RuntimeError(f"FSSAI logo artwork missing or unreadable: {FSSAI_LOGO_PATH}")
+
+    font, tracking, box = _fit_sticker_number(draw, number, logo.width)
+    num_h = box[3] - box[1]
+    gap   = round(num_h * FSSAI_STICKER_GAP)
+
+    # A wide, short label runs out of height before width: shrink the logo
+    # to leave room for the number, then refit the number to the new width.
+    if logo.height + gap + num_h > box_h:
+        logo = load_fssai_logo(height=box_h - gap - num_h, max_width=box_w)
+        font, tracking, box = _fit_sticker_number(draw, number, logo.width)
+        num_h = box[3] - box[1]
+        gap   = round(num_h * FSSAI_STICKER_GAP)
+
+    # Centre the logo and number as one group
+    top = (LABEL_H_PX - (logo.height + gap + num_h)) // 2
+    img.paste(logo, ((LABEL_W_PX - logo.width) // 2, top))
+
+    x = (LABEL_W_PX - (box[2] - box[0])) // 2 - box[0]
+    y = top + logo.height + gap - box[1]    # baseline that puts the digits' top `gap` below the logo
+    for ch in number:
+        draw.text((x, y), ch, font=font, fill="black", anchor="ls")
+        x += font.getlength(ch) + tracking
+
+    # Threshold rather than leave it to _pack_mono(), whose dithering turns
+    # the anti-aliased edges of type this large into speckle.
+    return img.convert("L").point(lambda p: 0 if p < 128 else 255).convert("RGB")
+
+
 def render_label(req, batch_no: str = ""):
-    """Render a single label (product or ingredients) to a PIL image."""
+    """Render a single label (product, ingredients or FSSAI logo) to a PIL image."""
     _apply_geometry()
     if req.label_type == "ingredients":
         return build_ingredients_label_image(req)
+    if req.label_type == "fssai":
+        return build_fssai_label_image(req)
     return build_label_image(req, batch_no)
 
 

@@ -60,12 +60,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Ingredients sticker:*\n"
         "`Ingredients text ;; i`\n"
         "`Ingredients text ;; i 5`\n\n"
+        "*FSSAI logo sticker:*\n"
+        "`FSSAI number ;; f`\n"
+        "`FSSAI number ;; f 5`\n\n"
         "*Examples:*\n"
         "`PHALLI, 10`\n"
         "`TOOR DAL, 5, 1 KG`\n"
         "`TOOR DAL, 5, 1 KG, today, today + 6 months, taj`\n"
         "`TOOR DAL, 5, 1 KG, 15/04/2026, 15/07/2026`\n"
-        "`Refined wheat flour, Rice Flour ;; i`\n\n"
+        "`Refined wheat flour, Rice Flour ;; i`\n"
+        "`13620011000563 ;; f 10`\n\n"
         "_Dates are optional. Defaults: Packed = today, Use By = today + 3 months._\n"
         "_Date formats: today, today + N months, DD/MM/YYYY, DD-MM-YYYY_\n"
         "Hotel defaults to *general* if not specified.\n"
@@ -95,6 +99,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Ingredients sticker:*\n"
         "`Ingredients text ;; i`\n"
         "`Ingredients text ;; i 5`\n\n"
+        "*FSSAI logo sticker:*\n"
+        "`FSSAI number ;; f`\n"
+        "`FSSAI number ;; f 5`\n\n"
         "*General:*\n"
         "/status — Check printer status\n"
         "/rolltype — View/set roll type (single or 2-up)\n"
@@ -395,6 +402,10 @@ async def _execute_print(requests, update_or_query, context):
             queued_lines.append(
                 f"📋 *Ingredients sticker* — {req.quantity} sticker(s) | Job: `{q_job.id}`"
             )
+        elif req.label_type == "fssai":
+            queued_lines.append(
+                f"📋 *FSSAI logo sticker* — {req.fssai_number} — {req.quantity} sticker(s) | Job: `{q_job.id}`"
+            )
         else:
             hotel_tag = f" [{req.hotel}]" if req.hotel != "general" else ""
             queued_lines.append(
@@ -408,6 +419,14 @@ async def _execute_print(requests, update_or_query, context):
                 f"🖨️ *Queued {req.quantity} ingredients sticker(s)*\n\n"
                 f"🧾 Ingredients: {req.ingredients}\n"
                 f"🔖 Job ID: `{queued_lines[0].split('Job: `')[1].rstrip('`')}`\n\n"
+                "_Use /queue to see status, /cancel ID to cancel._",
+                parse_mode="Markdown"
+            )
+        elif req.label_type == "fssai":
+            await send(
+                f"🖨️ *Queued {req.quantity} FSSAI logo sticker(s)*\n\n"
+                f"🔢 FSSAI No.  : {req.fssai_number}\n"
+                f"🆔 Job ID     : `{q_jobs[0].id}`\n\n"
                 "_Use /queue to see status, /cancel ID to cancel._",
                 parse_mode="Markdown"
             )

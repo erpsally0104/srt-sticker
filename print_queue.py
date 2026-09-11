@@ -63,7 +63,7 @@ class PrintQueue:
 
     def add(self, req: PrintRequest, username: str, source: str = "ui") -> QueueJob:
         """Add a print request to the queue. Returns the created job."""
-        batch_no = get_next_batch_number() if req.label_type != "ingredients" else ""
+        batch_no = get_next_batch_number() if req.label_type == "product" else ""
         job = QueueJob(
             id=uuid.uuid4().hex[:8],
             req=req,
@@ -85,7 +85,9 @@ class PrintQueue:
         jobs = []
         with self._lock:
             for req in reqs:
-                batch_no = get_next_batch_number() if req.label_type != "ingredients" else ""
+                # Only product labels carry a lot number. Ingredients and FSSAI
+                # logo stickers would each burn one of the day's sequence.
+                batch_no = get_next_batch_number() if req.label_type == "product" else ""
                 job = QueueJob(
                     id=uuid.uuid4().hex[:8],
                     req=req,
@@ -163,8 +165,8 @@ class PrintQueue:
                 time.sleep(1)
 
     def _log_job(self, job):
-        """Log a completed product job (ingredients labels are not logged)."""
-        if job.req.label_type != "ingredients":
+        """Log a completed product job (ingredients and FSSAI logo labels are not logged)."""
+        if job.req.label_type == "product":
             log_print(
                 username=job.username,
                 source=job.source,

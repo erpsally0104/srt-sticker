@@ -18,7 +18,7 @@ Both front-ends share the same parsing, printing, batch-numbering, and queue log
 - FSSAI license number and company address
 - "Not For Retail Sale | For Institutional Sale Only"
 
-There is also an **ingredients-only** sticker type that fills the label with auto-sized ingredient text.
+There is also an **ingredients-only** sticker type that fills the label with auto-sized ingredient text, and an **FSSAI logo** sticker type that prints only the FSSAI logo with a 14-digit licence number beneath it (`13620011000563 ;; f 5` on Telegram). Neither takes a batch number or appears in the print history.
 
 ## Key business rules
 

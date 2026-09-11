@@ -14,9 +14,10 @@ class PrintRequest:
     quantity: int
     packed_on: str
     best_before: str
-    label_type: str = "product"  # "product" or "ingredients"
+    label_type: str = "product"  # "product", "ingredients" or "fssai"
     ingredients: str = ""        # raw ingredients text for ingredients labels
     hotel: str = "general"       # hotel/client this product belongs to
+    fssai_number: str = ""       # licence number for FSSAI logo labels
 
 
 def resolve_date(raw: str, fallback: datetime = None) -> Optional[datetime]:
@@ -170,11 +171,18 @@ def parse_message(
         Refined wheat flour, Whole Wheat Flour ;; i
         Refined wheat flour, Whole Wheat Flour ;; i 5
 
+    FSSAI logo format:
+        13620011000563 ;; f
+        13620011000563 ;; f 5
+
     Returns (PrintRequest, None) on success or (None, error_message) on failure.
     """
 
-    # ── Check for ingredients-only format: text ;; i [quantity] ──
+    # ── Sticker formats: text ;; i [quantity]  or  number ;; f [quantity] ──
     if ";;" in text:
+        code = text.split(";;")[-1].split()
+        if code and code[0].lower() == "f":
+            return _parse_fssai(text)
         return _parse_ingredients(text)
 
     parts = [p.strip() for p in text.split(',')]
@@ -298,6 +306,54 @@ def _parse_ingredients(text: str) -> Tuple[Optional[PrintRequest], Optional[str]
     ), None
 
 
+def _parse_fssai(text: str) -> Tuple[Optional[PrintRequest], Optional[str]]:
+    """
+    Parse FSSAI logo sticker format.
+
+    Format: <FSSAI number> ;; f [quantity]
+    Examples:
+        13620011000563 ;; f       → 1 sticker
+        13620011000563 ;; f 5     → 5 stickers
+    """
+    parts = text.split(";;")
+    if len(parts) != 2:
+        return None, _fssai_format_error()
+
+    # Spaces are dropped so a number copied as "1362 0011 0005 63" still reads
+    number = "".join(parts[0].split())
+    suffix_parts = parts[1].split()
+    if not suffix_parts or suffix_parts[0].lower() != "f":
+        return None, _fssai_format_error()
+
+    # FSSAI licence and registration numbers are always 14 digits, so any
+    # other length is a typo that would go out on every sticker. [0-9], not
+    # \d, which would also pass Devanagari digits the label font cannot draw.
+    if not re.fullmatch(r"[0-9]{14}", number):
+        return None, "⚠️ FSSAI number must be exactly 14 digits."
+
+    # Quantity (default 1)
+    quantity = 1
+    if len(suffix_parts) >= 2:
+        try:
+            quantity = int(suffix_parts[1])
+            if quantity <= 0:
+                return None, "⚠️ Quantity must be a positive number."
+            if quantity > 500:
+                return None, "⚠️ Quantity cannot exceed 500 per request."
+        except ValueError:
+            return None, "⚠️ Quantity after `f` must be a valid number.\n\n" + _fssai_format_error()
+
+    return PrintRequest(
+        product=f"FSSAI {number}",   # the job name the print queue shows
+        weight="",
+        quantity=quantity,
+        packed_on="",
+        best_before="",
+        label_type="fssai",
+        fssai_number=number,
+    ), None
+
+
 def _format_error() -> str:
     return (
         "❌ *Invalid format.* Use:\n\n"
@@ -314,7 +370,10 @@ def _format_error() -> str:
         "_Date formats: today, today + N months, DD/MM/YYYY, DD-MM-YYYY_\n\n"
         "*Ingredients sticker:*\n"
         "`Refined wheat flour, Rice Flour ;; i`\n"
-        "`Refined wheat flour, Rice Flour ;; i 5`"
+        "`Refined wheat flour, Rice Flour ;; i 5`\n\n"
+        "*FSSAI logo sticker:*\n"
+        "`13620011000563 ;; f`\n"
+        "`13620011000563 ;; f 5`"
     )
 
 
@@ -327,4 +386,15 @@ def _ingredients_format_error() -> str:
         "*Examples:*\n"
         "`Refined wheat flour, Whole Wheat Flour ;; i`\n"
         "`Refined wheat flour, Rice Flour ;; i 10`"
+    )
+
+
+def _fssai_format_error() -> str:
+    return (
+        "❌ *Invalid FSSAI sticker format.* Use:\n\n"
+        "`FSSAI number ;; f`\n"
+        "or\n"
+        "`FSSAI number ;; f 5`\n\n"
+        "*Example:*\n"
+        "`13620011000563 ;; f 10`"
     )
