@@ -1,12 +1,56 @@
 import json
 import os
+import re
 import shutil
 
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
 BACKUP_FILE   = PRODUCTS_FILE + ".bak"
 
-DEFAULT_WEIGHT = "500 g"
 DEFAULT_HOTEL  = "general"
+
+# Use By = Packed + this many months, unless the product sets its own.
+DEFAULT_SHELF_MONTHS = 3
+SHELF_MONTHS_RANGE   = (1, 60)
+
+# Hotel names travel as one bare word: the 6th comma field of a Telegram
+# print line, and the last argument of /removeproduct.
+HOTEL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,29}$")
+
+# A product's entry is its weight string ("2 kg") or, once a shelf life has
+# been set, {"weight": "2 kg", "shelf_months": 6}. Plain strings stay the
+# norm so older files, recover_products.py and hand edits keep working.
+_KEEP = object()   # add_product(): leave the product's shelf life as it is
+
+
+def _entry_weight(val) -> str:
+    return str(val.get("weight", "")) if isinstance(val, dict) else str(val)
+
+
+def _entry_shelf(val):
+    return val.get("shelf_months") if isinstance(val, dict) else None
+
+
+def _make_entry(weight: str, shelf_months):
+    return {"weight": weight, "shelf_months": shelf_months} if shelf_months else weight
+
+
+def _find_key(hotel_products: dict, product: str):
+    product = product.upper()
+    return next((k for k in hotel_products if k.upper() == product), None)
+
+
+def validate_shelf_months(raw):
+    """Returns (months or None, error or None). Blank means 'use the default'."""
+    if raw is None or str(raw).strip() == "":
+        return None, None
+    try:
+        months = int(str(raw).strip())
+    except ValueError:
+        return None, "Shelf life must be a whole number of months"
+    lo, hi = SHELF_MONTHS_RANGE
+    if not lo <= months <= hi:
+        return None, f"Shelf life must be between {lo} and {hi} months"
+    return months, None
 
 
 def _read_json(path):
@@ -63,29 +107,33 @@ def _save(data: dict):
     os.replace(tmp, PRODUCTS_FILE)      # atomic on Windows and POSIX
 
 
-def get_weight(product: str, hotel: str = DEFAULT_HOTEL) -> str:
-    """Returns the default weight for a product in a hotel, or DEFAULT_WEIGHT if not found."""
+def find_product(product: str, hotel: str = DEFAULT_HOTEL):
+    """
+    Returns (weight, shelf_months) for a listed product, or None if it is
+    not listed. The hotel's own list wins; otherwise it falls back to
+    general. shelf_months is None when the product does not set one.
+
+    There is deliberately no default weight: a guessed net quantity on a
+    label is worse than refusing to print it.
+    """
     data = _load()
-    hotel_products = data.get(hotel.lower(), {})
-    for key, val in hotel_products.items():
-        if key.upper() == product.upper():
-            return val
-    # Fallback to general if not found in specific hotel
-    if hotel.lower() != DEFAULT_HOTEL:
-        general = data.get(DEFAULT_HOTEL, {})
-        for key, val in general.items():
-            if key.upper() == product.upper():
-                return val
-    return DEFAULT_WEIGHT
+    hotel = hotel.lower()
+    for h in ([hotel, DEFAULT_HOTEL] if hotel != DEFAULT_HOTEL else [hotel]):
+        prods = data.get(h, {})
+        key = _find_key(prods, product)
+        if key is not None:
+            return _entry_weight(prods[key]), _entry_shelf(prods[key])
+    return None
 
 
 def product_exists(product: str, hotel: str = DEFAULT_HOTEL) -> bool:
     data = _load()
-    hotel_products = data.get(hotel.lower(), {})
-    return any(k.upper() == product.upper() for k in hotel_products)
+    return _find_key(data.get(hotel.lower(), {}), product) is not None
 
 
-def add_product(product: str, weight: str, hotel: str = DEFAULT_HOTEL) -> str:
+def add_product(product: str, weight: str, hotel: str = DEFAULT_HOTEL,
+                shelf_months=_KEEP) -> str:
+    """Add or update a product. Leaving shelf_months out keeps what the product already has."""
     product = product.upper().strip()
     weight = weight.upper().strip()
     hotel = hotel.lower().strip()
@@ -93,16 +141,62 @@ def add_product(product: str, weight: str, hotel: str = DEFAULT_HOTEL) -> str:
     if hotel not in data:
         data[hotel] = {}
     hotel_products = data[hotel]
-    if any(k.upper() == product for k in hotel_products):
+    old_key = _find_key(hotel_products, product)
+    if shelf_months is _KEEP:
+        shelf_months = _entry_shelf(hotel_products[old_key]) if old_key is not None else None
+    entry = _make_entry(weight, shelf_months)
+    if old_key is not None:
         # Update existing (remove old key casing, add new)
-        old_key = next(k for k in hotel_products if k.upper() == product)
         del hotel_products[old_key]
-        hotel_products[product] = weight
+        hotel_products[product] = entry
         _save(data)
         return f"✅ Updated *{product}* → {weight} in [{hotel}]"
-    hotel_products[product] = weight
+    hotel_products[product] = entry
     _save(data)
     return f"✅ Added *{product}* → {weight} to [{hotel}]"
+
+
+def update_product(old_product: str, product: str, weight: str,
+                   hotel: str = DEFAULT_HOTEL, shelf_months=None):
+    """
+    Edit a product in place: name, weight and shelf life in one write.
+
+    The web UI used to rename by removing the old name and then adding the
+    new one as two requests; if the second failed, the product was gone.
+    Returns (ok, message).
+    """
+    old_product = old_product.upper().strip()
+    product = product.upper().strip()
+    weight = weight.upper().strip()
+    hotel = hotel.lower().strip()
+    data = _load()
+    prods = data.get(hotel, {})
+    old_key = _find_key(prods, old_product)
+    if old_key is None:
+        return False, f"{old_product} not found in [{hotel}]"
+    clash = _find_key(prods, product)
+    if clash is not None and clash != old_key:
+        return False, f"{product} is already in [{hotel}]"
+    # Rebuilt rather than del + insert so the product keeps its place in the list
+    data[hotel] = {
+        (product if k == old_key else k): (_make_entry(weight, shelf_months) if k == old_key else v)
+        for k, v in prods.items()
+    }
+    _save(data)
+    return True, f"Updated {product} in [{hotel}]"
+
+
+def add_hotel(hotel: str):
+    """Create an empty hotel. Returns (ok, message)."""
+    hotel = (hotel or "").strip().lower()
+    if not HOTEL_NAME_RE.match(hotel):
+        return False, "Hotel name: letters, numbers, - or _ only, no spaces (max 30)"
+    data = _load()
+    if hotel in data:
+        return False, f"[{hotel}] already exists"
+    data[hotel] = {}
+    _save(data)
+    return True, f"Added hotel [{hotel}]"
 
 
 def remove_product(product: str, hotel: str = DEFAULT_HOTEL) -> str:
@@ -129,9 +223,14 @@ def list_products(hotel: str = None) -> str:
         if not hotel_products:
             return f"No products in [{hotel}]."
         lines = [f"📦 *Product List [{hotel}]:*"]
-        for product, weight in hotel_products.items():
-            lines.append(f"  • {product} → {weight}")
-        lines.append(f"\n_Default weight for unlisted products: {DEFAULT_WEIGHT}_")
+        for product, val in hotel_products.items():
+            shelf = _entry_shelf(val)
+            shelf_txt = f" ({shelf} mo shelf life)" if shelf else ""
+            lines.append(f"  • {product} → {_entry_weight(val)}{shelf_txt}")
+        lines.append(
+            "\n_Unlisted products need a weight in the message. "
+            f"Shelf life defaults to {DEFAULT_SHELF_MONTHS} months._"
+        )
         return "\n".join(lines)
 
     # List all hotels
@@ -148,7 +247,16 @@ def list_hotels() -> list:
     return list(data.keys())
 
 
-def get_hotel_products(hotel: str = DEFAULT_HOTEL) -> dict:
-    """Returns the product dict for a specific hotel."""
+def hotel_entries(hotel: str, data: dict = None) -> list:
+    """[{name, weight, shelf_months}, ...] for one hotel's own list."""
+    data = _load() if data is None else data
+    return [
+        {"name": k, "weight": _entry_weight(v), "shelf_months": _entry_shelf(v)}
+        for k, v in data.get(hotel.lower(), {}).items()
+    ]
+
+
+def all_hotel_entries() -> dict:
+    """{hotel: [{name, weight, shelf_months}, ...]} for every hotel."""
     data = _load()
-    return data.get(hotel.lower(), {})
+    return {h: hotel_entries(h, data) for h in data}

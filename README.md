@@ -77,7 +77,7 @@ TOOR DAL | 5 | 1 KG
 | Field | Logic |
 |---|---|
 | Packed On | Today's date |
-| Best Before | Today + 2 months |
+| Use By | Packed On + the product's shelf life (3 months if not set) |
 | Batch No | SRT + DDMMYY + 3-digit sequence (e.g. SRT020426001) |
 
 ---

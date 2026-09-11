@@ -70,7 +70,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`TOOR DAL, 5, 1 KG, 15/04/2026, 15/07/2026`\n"
         "`Refined wheat flour, Rice Flour ;; i`\n"
         "`13620011000563 ;; f 10`\n\n"
-        "_Dates are optional. Defaults: Packed = today, Use By = today + 3 months._\n"
+        "_Dates are optional. Defaults: Packed = today, Use By = Packed + the product's shelf life (3 months if not set)._\n"
         "_Date formats: today, today + N months, DD/MM/YYYY, DD-MM-YYYY_\n"
         "Hotel defaults to *general* if not specified.\n"
         "Use /help to see all commands.",
@@ -93,7 +93,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`Product, Quantity, Weight`\n"
         "`Product, Quantity, Weight, PackedDate, BestBefore, Hotel`\n\n"
         "_Dates & Hotel are optional._\n"
-        "_Packed defaults to today, Use By to today + 3 months._\n"
+        "_Packed defaults to today, Use By to Packed + the product's shelf life (3 months if not set)._\n"
+        "_Products not in the list need a weight._\n"
         "_Date formats: today, today + N months, DD/MM/YYYY, DD-MM-YYYY_\n"
         "_Leave date empty (,,) to use default._\n\n"
         "*Ingredients sticker:*\n"

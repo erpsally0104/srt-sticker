@@ -1,21 +1,26 @@
-from flask import Flask, request, jsonify
+import io
+from datetime import datetime, timedelta, timezone
+
+from dateutil.relativedelta import relativedelta
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from functools import wraps
 
 from auth import init_db, verify_user, generate_tokens, verify_access_token, verify_refresh_token
 from logger import log_print, get_logs, get_all_usernames
-from parser import parse_message
-from printer import print_label, get_printer_status, check_printer
+from parser import parse_message, format_date_pair, PrintRequest
+from printer import print_label, render_label, get_printer_status, check_printer
 from batch_manager import get_next_batch_number
 from print_queue import get_queue
 from product_manager import (
-    add_product, remove_product, list_hotels,
-    get_hotel_products, _load as load_products
+    add_product, remove_product, update_product, add_hotel, list_hotels,
+    hotel_entries, all_hotel_entries, validate_shelf_months,
 )
 from settings_manager import (
-    get_settings, set_roll_type, set_geometry, GEOMETRY_DEFAULTS,
-    set_label_text_settings, LABEL_TEXT_DEFAULTS,
+    get_settings, get_roll_type, set_roll_type, set_geometry, GEOMETRY_DEFAULTS,
+    get_label_text_settings, set_label_text_settings, LABEL_TEXT_DEFAULTS,
 )
+from templates_manager import list_templates, save_template, remove_template
 
 app = Flask(__name__)
 CORS(app)
@@ -119,6 +124,17 @@ def get_app_settings():
 def update_app_settings():
     body = request.get_json() or {}
 
+    # The FSSAI number, company name and address are legal declarations on
+    # every label, so only the admin may change them. Checked before any
+    # write so a refused request changes nothing. Values sent unchanged are
+    # let through: the settings form posts every field on each save.
+    text_updates = {k: body[k] for k in body if k in LABEL_TEXT_DEFAULTS}
+    if text_updates and not is_admin():
+        current = get_label_text_settings()
+        if any(str(v).strip() != current.get(k) for k, v in text_updates.items()):
+            return jsonify({"error": "Only the admin can change the FSSAI number, company name and address"}), 403
+        text_updates = {}
+
     # Roll type (optional)
     if "roll_type" in body:
         if set_roll_type(body.get("roll_type")) is None:
@@ -132,7 +148,6 @@ def update_app_settings():
             return jsonify({"error": err}), 400
 
     # Label text settings (FSSAI / company line) (optional)
-    text_updates = {k: body[k] for k in body if k in LABEL_TEXT_DEFAULTS}
     if text_updates:
         applied, err = set_label_text_settings(text_updates)
         if err:
@@ -141,6 +156,7 @@ def update_app_settings():
     return jsonify(get_settings())
 
 
+# ── Products ──────────────────────────────────────
 @app.route("/api/products", methods=["GET"])
 @require_auth
 def get_products():
@@ -149,22 +165,107 @@ def get_products():
 
     if hotel:
         # Return products for a specific hotel
-        prods = get_hotel_products(hotel)
-        products = [{"name": k, "weight": v} for k, v in prods.items()]
-        return jsonify({"products": products, "hotels": hotels, "current_hotel": hotel})
+        return jsonify({"products": hotel_entries(hotel), "hotels": hotels, "current_hotel": hotel})
+    # Return all hotels with their products
+    return jsonify({"by_hotel": all_hotel_entries(), "hotels": hotels})
+
+
+def _shelf_from_body(body):
+    """(months or None, error or None) from an optional shelf_months field."""
+    return validate_shelf_months(body.get("shelf_months"))
+
+
+@app.route("/api/products/add", methods=["POST"])
+@require_auth
+def api_add_product():
+    body    = request.get_json() or {}
+    product = (body.get("product") or "").strip().upper()
+    weight  = (body.get("weight") or "").strip().upper()
+    hotel   = (body.get("hotel") or "general").strip().lower()
+    if not product or not weight:
+        return jsonify({"error": "Product and weight required"}), 400
+    if "shelf_months" in body:
+        shelf, err = _shelf_from_body(body)
+        if err:
+            return jsonify({"error": err}), 400
+        result = add_product(product, weight, hotel, shelf_months=shelf)
     else:
-        # Return all hotels with their products
-        all_data = load_products()
-        by_hotel = {}
-        for h, prods in all_data.items():
-            by_hotel[h] = [{"name": k, "weight": v} for k, v in prods.items()]
-        return jsonify({"by_hotel": by_hotel, "hotels": hotels})
+        result = add_product(product, weight, hotel)
+    return jsonify({"message": result})
 
 
+@app.route("/api/products/update", methods=["POST"])
+@require_auth
+def api_update_product():
+    body    = request.get_json() or {}
+    old     = (body.get("old_product") or "").strip().upper()
+    product = (body.get("product") or "").strip().upper()
+    weight  = (body.get("weight") or "").strip().upper()
+    hotel   = (body.get("hotel") or "general").strip().lower()
+    if not old or not product or not weight:
+        return jsonify({"error": "Product and weight required"}), 400
+    shelf, err = _shelf_from_body(body)
+    if err:
+        return jsonify({"error": err}), 400
+    ok, message = update_product(old, product, weight, hotel, shelf_months=shelf)
+    if not ok:
+        return jsonify({"error": message}), 400
+    return jsonify({"message": message})
+
+
+@app.route("/api/products/remove", methods=["POST"])
+@require_auth
+def api_remove_product():
+    body    = request.get_json() or {}
+    product = (body.get("product") or "").strip().upper()
+    hotel   = (body.get("hotel") or "general").strip().lower()
+    if not product:
+        return jsonify({"error": "Product required"}), 400
+    result = remove_product(product, hotel)
+    return jsonify({"message": result})
+
+
+@app.route("/api/hotels/add", methods=["POST"])
+@require_auth
+def api_add_hotel():
+    body = request.get_json() or {}
+    ok, message = add_hotel(body.get("hotel"))
+    if not ok:
+        return jsonify({"error": message}), 400
+    return jsonify({"message": message, "hotels": list_hotels()})
+
+
+# ── Ingredient templates ──────────────────────────
+@app.route("/api/ingredient-templates", methods=["GET"])
+@require_auth
+def api_list_templates():
+    return jsonify({"templates": list_templates()})
+
+
+@app.route("/api/ingredient-templates/save", methods=["POST"])
+@require_auth
+def api_save_template():
+    body = request.get_json() or {}
+    ok, message = save_template(body.get("name"), body.get("text"))
+    if not ok:
+        return jsonify({"error": message}), 400
+    return jsonify({"message": message, "templates": list_templates()})
+
+
+@app.route("/api/ingredient-templates/remove", methods=["POST"])
+@require_auth
+def api_remove_template():
+    body = request.get_json() or {}
+    if not remove_template(body.get("name")):
+        return jsonify({"error": "Template not found"}), 404
+    return jsonify({"message": "Removed", "templates": list_templates()})
+
+
+# ── Printing ──────────────────────────────────────
 @app.route("/api/print", methods=["POST"])
 @require_auth
 def print_labels():
-    body  = request.get_json()
+    body  = request.get_json() or {}
     jobs  = body.get("jobs", [])
     hotel = (body.get("hotel") or "general").strip().lower()
     packed_on   = (body.get("packed_on") or "").strip() or None
@@ -217,29 +318,45 @@ def print_labels():
     return jsonify({"results": results})
 
 
-@app.route("/api/products/add", methods=["POST"])
+@app.route("/api/preview", methods=["POST"])
 @require_auth
-def api_add_product():
-    body    = request.get_json()
-    product = body.get("product", "").strip().upper()
-    weight  = body.get("weight", "").strip().upper()
-    hotel   = (body.get("hotel") or "general").strip().lower()
-    if not product or not weight:
-        return jsonify({"error": "Product and weight required"}), 400
-    result = add_product(product, weight, hotel)
-    return jsonify({"message": result})
+def preview_label():
+    """Render one label to a PNG exactly as it would print, without queueing it."""
+    body  = request.get_json() or {}
+    line  = (body.get("line") or "").strip()
+    hotel = (body.get("hotel") or "general").strip().lower()
+    packed_on   = (body.get("packed_on") or "").strip() or None
+    best_before = (body.get("best_before") or "").strip() or None
+    if not line:
+        return jsonify({"error": "Nothing to preview"}), 400
+    req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before)
+    if error:
+        return jsonify({"error": error}), 400
+    # A preview must not use up one of the day's lot numbers, so the
+    # sequence digits are left as placeholders.
+    batch_no = f"SRT{datetime.now():%d%m%y}xxx" if req.label_type == "product" else ""
+    try:
+        img = render_label(req, batch_no)
+    except Exception as e:
+        return jsonify({"error": f"Could not render the label: {e}"}), 500
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
 
 
-@app.route("/api/products/remove", methods=["POST"])
+@app.route("/api/test-print", methods=["POST"])
 @require_auth
-def api_remove_product():
-    body    = request.get_json()
-    product = body.get("product", "").strip().upper()
-    hotel   = (body.get("hotel") or "general").strip().lower()
-    if not product:
-        return jsonify({"error": "Product required"}), 400
-    result = remove_product(product, hotel)
-    return jsonify({"message": result})
+def test_print():
+    """Queue a calibration label using the saved settings."""
+    today = datetime.now()
+    packed, expiry = format_date_pair(today, today + relativedelta(months=3))
+    # Two on a 2-up roll, so both columns can be checked for alignment
+    qty = 2 if get_roll_type() == "double" else 1
+    req = PrintRequest(product="TEST LABEL", weight="1 kg", quantity=qty,
+                       packed_on=packed, best_before=expiry)
+    job = get_queue().add_test(req, username=request.username)
+    return jsonify({"job_id": job.id, "quantity": qty})
 
 
 # ── Queue endpoints ───────────────────────────────
@@ -248,13 +365,16 @@ def api_remove_product():
 def get_print_queue():
     queue = get_queue()
     jobs = queue.list_all()
-    return jsonify({"jobs": jobs})
+    # The printer state rides along so the UI's queue poll also keeps the
+    # status pill current, without a second request through the tunnel.
+    online, message = check_printer()
+    return jsonify({"jobs": jobs, "printer": {"online": online, "status": message}})
 
 
 @app.route("/api/queue/cancel", methods=["POST"])
 @require_auth
 def cancel_queue_job():
-    body   = request.get_json()
+    body   = request.get_json() or {}
     job_id = (body.get("job_id") or "").strip()
     if not job_id:
         return jsonify({"error": "job_id required"}), 400
@@ -273,7 +393,37 @@ def cancel_all_queue_jobs():
     return jsonify({"message": f"Cancelled {count} job(s)", "count": count})
 
 
+@app.route("/api/queue/retry", methods=["POST"])
+@require_auth
+def retry_queue_jobs():
+    """Requeue one failed job (job_id) or every failed job (no job_id)."""
+    body   = request.get_json(silent=True) or {}
+    job_id = (body.get("job_id") or "").strip() or None
+    count  = get_queue().retry(job_id)
+    if job_id and not count:
+        return jsonify({"error": "Job not found or not failed"}), 404
+    return jsonify({"message": f"Requeued {count} job(s)", "count": count})
+
+
+@app.route("/api/queue/dismiss", methods=["POST"])
+@require_auth
+def dismiss_queue_jobs():
+    """Clear one failed job (job_id) or every failed job (no job_id) from the list."""
+    body   = request.get_json(silent=True) or {}
+    job_id = (body.get("job_id") or "").strip() or None
+    count  = get_queue().dismiss(job_id)
+    if job_id and not count:
+        return jsonify({"error": "Job not found or not failed"}), 404
+    return jsonify({"message": f"Cleared {count} job(s)", "count": count})
+
+
 # ── Logs endpoint ────────────────────────────────
+def _local_day_start_utc(day: str) -> str:
+    """'YYYY-MM-DD' as a local calendar day → its midnight in UTC, the zone print_logs stores."""
+    local_midnight = datetime.strptime(day, "%Y-%m-%d")
+    return local_midnight.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 @app.route("/api/logs", methods=["GET"])
 @require_auth
 def get_print_logs():
@@ -281,13 +431,29 @@ def get_print_logs():
     admin          = is_admin()
     filter_user    = request.args.get("user", "").strip() or None
     filter_product = request.args.get("product", "").strip() or None
-    limit          = min(int(request.args.get("limit", 100)), 500)
+    date_from      = request.args.get("from", "").strip()
+    date_to        = request.args.get("to", "").strip()
+    try:
+        limit  = max(1, min(int(request.args.get("limit", 100)), 500))
+        offset = max(0, int(request.args.get("offset", 0)))
+        since  = _local_day_start_utc(date_from) if date_from else None
+        # 'to' is inclusive: everything before the start of the next day
+        until  = (_local_day_start_utc((datetime.strptime(date_to, "%Y-%m-%d")
+                                         + timedelta(days=1)).strftime("%Y-%m-%d"))
+                  if date_to else None)
+    except ValueError:
+        return jsonify({"error": "Invalid limit, offset or date"}), 400
 
-    logs      = get_logs(username, admin, limit, filter_user, filter_product)
+    # One extra row tells us whether there is another page
+    logs = get_logs(username, admin, limit + 1, filter_user, filter_product,
+                    since_utc=since, until_utc=until, offset=offset)
+    has_more = len(logs) > limit
+    logs = logs[:limit]
     usernames = get_all_usernames() if admin else [username]
 
     return jsonify({
         "logs":      logs,
+        "has_more":  has_more,
         "is_admin":  admin,
         "usernames": usernames
     })

@@ -1,8 +1,10 @@
-const CACHE_NAME = 'srt-labels-v1';
+const CACHE_NAME = 'srt-labels-v2';
 const ASSETS = [
   './index.html',
   './manifest.json',
-  './icon.png'
+  './icon.png',
+  './icon-192.png',
+  './icon-maskable.png'
 ];
 
 // Install — cache core assets
@@ -31,7 +33,9 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // For app shell — try network, fall back to cache
+  // For app shell — try network, fall back to cache.
+  // ignoreSearch: the app's shortcuts open index.html?tab=queue, which is
+  // cached under plain index.html.
   e.respondWith(
     fetch(e.request)
       .then(res => {
@@ -39,6 +43,21 @@ self.addEventListener('fetch', e => {
         caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         return res;
       })
-      .catch(() => caches.match(e.request))
+      .catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
+});
+
+// Tapping a "print failed" notification brings the app forward on its Queue tab
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of wins) {
+      if ('focus' in w) {
+        w.postMessage({ type: 'open-tab', tab: 'queue' });
+        return w.focus();
+      }
+    }
+    return self.clients.openWindow('./index.html?tab=queue');
+  })());
 });

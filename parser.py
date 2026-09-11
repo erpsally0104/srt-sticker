@@ -4,7 +4,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
 
-from product_manager import get_weight
+from product_manager import find_product, DEFAULT_SHELF_MONTHS
 
 
 @dataclass
@@ -223,10 +223,21 @@ def parse_message(
     if len(parts) >= 6 and parts[5].strip():
         req_hotel = parts[5].strip().lower()
 
+    listed = find_product(product, req_hotel)
+    shelf_months = (listed[1] if listed else None) or DEFAULT_SHELF_MONTHS
+
     if weight is None:
+        if not listed or not listed[0]:
+            # This used to print a made-up 500 g. The net quantity is a
+            # mandatory declaration, so ask for it instead.
+            where = "" if req_hotel == "general" else f" for {req_hotel}"
+            return None, (
+                f"⚠️ {product} is not in the product list{where}, so there is no weight to print. "
+                f"Include the weight: `{product}, {quantity}, 2 kg`"
+            )
         # Normalize on the way out too — stored weights may predate the
         # switch to SI symbols.
-        weight = normalize_weight(get_weight(product, req_hotel))
+        weight = normalize_weight(listed[0])
 
     # Resolve dates — inline params (from bot) take priority over function args (from UI)
     today = datetime.now()
@@ -245,7 +256,9 @@ def parse_message(
         expiry_dt = resolve_date(raw_bb, fallback=today)
     except ValueError as e:
         return None, f"⚠️ Invalid use-by date: {e}"
-    expiry_dt = expiry_dt or (today + relativedelta(months=3))
+    # Counted from the packed date, not today, so a backdated packing date
+    # does not stretch the shelf life.
+    expiry_dt = expiry_dt or (packed_dt + relativedelta(months=shelf_months))
 
     packed_on_str, best_before_str = format_date_pair(packed_dt, expiry_dt)
 
@@ -366,7 +379,7 @@ def _format_error() -> str:
         "`TOOR DAL, 5, 2 kg`\n"
         "`TOOR DAL, 5, 2 kg, today, today + 6 months, taj`\n"
         "`TOOR DAL, 5, 2 kg, 15/04/2026, 15/07/2026`\n\n"
-        "_Dates are optional. Defaults: Packed = today, Use By = today + 3 months._\n"
+        "_Dates are optional. Defaults: Packed = today, Use By = Packed + the product's shelf life (3 months if not set)._\n"
         "_Date formats: today, today + N months, DD/MM/YYYY, DD-MM-YYYY_\n\n"
         "*Ingredients sticker:*\n"
         "`Refined wheat flour, Rice Flour ;; i`\n"

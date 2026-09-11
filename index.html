@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Zoom is allowed: every input is 16px, so iOS doesn't auto-zoom on focus.
+     viewport-fit=cover + env(safe-area-inset-*) below keep the header clear
+     of the notch and the nav clear of the home bar. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SRI RADHE — Label Printer</title>
 <meta name="theme-color" content="#FF6B00">
 <meta name="mobile-web-app-capable" content="yes">
@@ -81,6 +84,7 @@ body {
 
 /* ── Base inputs ────────────────────────────── */
 input[type="text"],
+input[type="search"],
 input[type="number"],
 input[type="password"],
 input[type="date"],
@@ -480,12 +484,14 @@ header {
 
 /* ── Toast ──────────────────────────────────── */
 .toast {
-  position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: 5rem; left: 50%; transform: translateX(-50%);
   background: var(--ink); color: #fff;
   padding: 10px 18px; font-size: 0.85rem;
   border-left: 4px solid var(--saffron);
   box-shadow: 3px 3px 0 rgba(0,0,0,0.3);
-  z-index: 999; white-space: nowrap;
+  z-index: 999;
+  display: flex; align-items: center; gap: 12px;
+  width: max-content; max-width: calc(100vw - 2rem);
   animation: toastIn 0.2s ease, toastOut 0.3s ease 2.5s forwards;
 }
 @keyframes toastIn  { from { opacity:0; transform: translateX(-50%) translateY(10px); } to { opacity:1; transform: translateX(-50%); } }
@@ -601,9 +607,126 @@ header {
 .reprint-bar-go:focus-visible,
 .queue-cancel:focus-visible,
 .product-item-edit:focus-visible,
-.product-item-remove:focus-visible {
+.product-item-remove:focus-visible,
+.job-card-preview:focus-visible,
+.queue-btn:focus-visible,
+.toast-action:focus-visible,
+.modal-close:focus-visible,
+.link-btn:focus-visible {
   outline: 3px solid var(--saffron); outline-offset: 1px;
 }
+
+[hidden] { display: none !important; }
+/* Date inputs have a wide built-in minimum; without this the two side by
+   side push the page sideways on a ~390px phone. */
+#dateFieldsWrap > div, input[type="date"] { min-width: 0; }
+input:disabled, textarea:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Row preview button + per-row notes ──────── */
+/* The corner buttons overlap the product box, whose wrapper (position:
+   relative, later in the DOM) otherwise paints over them and takes the tap. */
+.job-card-preview, .job-card-clone, .job-card-remove { z-index: 2; }
+.job-card-preview {
+  position: absolute; top: 8px; right: 80px;
+  width: 32px; height: 32px;
+  border: 1.5px solid #ddd; background: #fff;
+  color: #999; font-size: 0.9rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.job-card-preview:active { border-color: var(--saffron); color: var(--saffron); background: #fff8f0; }
+.row-meta { font-size: 0.72rem; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+.row-meta:empty, .row-error:empty { display: none; }
+.row-error {
+  font-size: 0.75rem; font-weight: 600; color: var(--red);
+  margin-top: 6px; line-height: 1.35;
+}
+.field-note { font-size: 0.75rem; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+.field-note:empty { display: none; }
+.link-btn {
+  background: none; border: none; padding: 0;
+  color: var(--saffron-dark); font: inherit; font-weight: 700;
+  text-decoration: underline; cursor: pointer; touch-action: manipulation;
+}
+.combo-option-tag {
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.5px;
+  text-transform: uppercase; color: #aaa; margin-left: 6px;
+}
+
+/* ── Queue badge on the nav ─────────────────── */
+.nav-tab { position: relative; }
+.nav-badge {
+  position: absolute; top: 4px; left: calc(50% + 6px);
+  min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--saffron); color: #fff;
+  font-size: 0.65rem; font-weight: 700; line-height: 18px;
+  text-align: center; letter-spacing: 0;
+}
+.nav-badge.fail { background: var(--red); }
+
+/* ── Queue actions / sections ───────────────── */
+.queue-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.queue-btn {
+  padding: 7px 10px; font-size: 0.75rem; font-weight: 600;
+  border: 1.5px solid var(--border); background: #fff; color: var(--ink);
+  font-family: 'DM Sans', sans-serif; cursor: pointer;
+  touch-action: manipulation; white-space: nowrap;
+}
+.queue-btn.retry { background: var(--saffron); color: #fff; }
+.queue-btn:disabled { opacity: 0.4; cursor: default; }
+.failed-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 10px; margin-bottom: 8px;
+  background: var(--red-light); border: 2px solid var(--red);
+  font-size: 0.82rem; font-weight: 600; color: var(--red);
+}
+.failed-bar-text { flex: 1 1 120px; }
+.queue-subtitle {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted); margin: 1rem 0 0.5rem;
+}
+.queue-item.done, .queue-item.cancelled { opacity: 0.75; }
+
+/* ── Toast action ───────────────────────────── */
+.toast-action {
+  background: none; border: 1.5px solid var(--saffron); color: var(--saffron);
+  font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 0.8rem;
+  padding: 4px 10px; cursor: pointer; flex-shrink: 0;
+}
+
+/* ── Label preview modal ────────────────────── */
+.modal {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+.modal-box {
+  background: #fff; border: 3px solid var(--border);
+  box-shadow: 6px 6px 0 rgba(0,0,0,0.3);
+  width: 100%; max-width: 440px; padding: 1rem;
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: 'Black Han Sans', sans-serif; letter-spacing: 1px;
+  margin-bottom: 0.75rem;
+}
+.modal-close {
+  width: 36px; height: 36px; border: 2px solid var(--border);
+  background: #fff; font-size: 1.2rem; cursor: pointer;
+}
+.modal-box img {
+  display: block; width: 100%; height: auto;
+  border: 1.5px dashed #bbb; image-rendering: pixelated;
+}
+.modal-msg { font-size: 0.8rem; color: var(--muted); margin-top: 0.6rem; line-height: 1.4; white-space: pre-line; }
+
+/* ── Small inline rows ──────────────────────── */
+.inline-row { display: flex; gap: 8px; align-items: stretch; }
+.inline-row select { flex: 1; min-width: 0; }
+.inline-row .btn-small { flex-shrink: 0; }
+.btn-danger { background: var(--red); }
+.btn-small:disabled { opacity: 0.4; cursor: default; }
 
 @media (min-width: 600px) {
   .brand-name { font-size: 1.4rem; }
@@ -611,28 +734,118 @@ header {
   .job-row-fields { grid-template-columns: 1fr 120px 80px; }
   .page { padding: 1.5rem; }
 }
+
+/* ── Safe areas (notch / home bar) ──────────── */
+/* With viewport-fit=cover and the translucent iOS status bar, the page runs
+   edge to edge; these keep content out from under the clock and the swipe bar. */
+header {
+  padding-top: calc(1rem + env(safe-area-inset-top));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  flex-wrap: wrap;   /* only so the connection banner can take its own row */
+}
+/* Brand shrinks (its text wraps) rather than pushing the buttons onto a second row */
+header > div:first-child { flex: 1 1 0; min-width: 0; }
+.bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+#loginScreen {
+  padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right))
+           max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left));
+}
+.page {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  /* room for the fixed bottom nav; the wide-screen rule above used to reset this to 1.5rem */
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 600px) {
+  .page {
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+  }
+}
+.toast { bottom: calc(5rem + env(safe-area-inset-bottom)); }
+
+/* ── Typing on a phone ──────────────────────── */
+/* The on-screen keyboard takes half the screen; the fixed nav and reprint
+   bar would take a slice more and hide the product dropdown. */
+body.kb-open .bottom-nav, body.kb-open .reprint-bar { display: none !important; }
+body.kb-open .toast { bottom: 1rem; }
+/* room to scroll the last item up to the top, so its dropdown clears the keyboard */
+body.kb-open .page { padding-bottom: 60vh; }
+/* scrollIntoView lands the row below the sticky header, not under it */
+.job-card { scroll-margin-top: calc(84px + env(safe-area-inset-top)); }
+
+/* ── Product box in each item ───────────────── */
+.job-card .prod-input { text-transform: uppercase; padding-right: 118px; }
+
+/* ── Bigger targets for fingers ─────────────── */
+@media (pointer: coarse) {
+  .job-card-remove, .job-card-clone, .job-card-preview { width: 38px; height: 38px; top: 6px; }
+  .job-card-clone   { right: 52px; }
+  .job-card-preview { right: 96px; }
+  .job-card .prod-input { padding-right: 136px; }
+  .queue-cancel, .product-item-edit, .product-item-remove { width: 40px; height: 40px; }
+  .qty-preset { min-height: 38px; padding: 6px 14px; }
+  .queue-btn  { min-height: 40px; }
+  .kbd-hint   { display: none; }
+}
+
+/* ── Keyboard ───────────────────────────────── */
+.nav-tab:focus-visible { outline: 3px solid var(--saffron); outline-offset: -3px; }
+.section-title:focus { outline: none; }
+.kbd-hint { font-size: 0.72rem; color: var(--muted); text-align: center; margin-top: 0.6rem; line-height: 1.5; }
+kbd {
+  font-family: 'DM Sans', sans-serif; font-size: 0.68rem; font-weight: 700;
+  border: 1.5px solid #bbb; border-bottom-width: 2.5px; padding: 0 5px; background: #fff;
+}
+
+/* ── Connection banner ──────────────────────── */
+.conn-banner {
+  flex: 1 0 100%; order: 3;
+  margin: 0.25rem calc(-1 * max(1rem, env(safe-area-inset-right))) -1rem calc(-1 * max(1rem, env(safe-area-inset-left)));
+  padding: 8px 1rem;
+  background: var(--ink); color: #fff;
+  font-size: 0.8rem; font-weight: 600; line-height: 1.35; text-align: center;
+  border-top: 3px solid var(--red);
+}
+.conn-banner .link-btn { color: #ffb27a; margin-left: 6px; }
+
+/* ── Settings: alert toggles ────────────────── */
+.check-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 0.88rem; line-height: 1.4; cursor: pointer; padding: 6px 0;
+}
+.check-row input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--saffron); flex-shrink: 0; cursor: pointer; }
 </style>
 </head>
 <body>
 
 <!-- ── Login ──────────────────────────────────── -->
 <div id="loginScreen" style="display:none;">
-  <div class="login-box">
+  <!-- A real form, so password managers offer to save the login and the
+       phone keyboard's Go key submits it. -->
+  <form class="login-box" onsubmit="event.preventDefault(); doLogin();">
     <div class="login-logo">SRI RADHE TRADERS</div>
     <div class="login-sub">Label Printing System</div>
     <div class="form-group">
-      <label class="form-label">Username</label>
-      <input type="text" id="loginUser" placeholder="Enter username"
-        autocomplete="username" onkeydown="if(event.key==='Enter') doLogin()"/>
+      <label class="form-label" for="loginUser">Username</label>
+      <!-- Usernames are matched exactly: stop iOS capitalising the first letter -->
+      <input type="text" id="loginUser" name="username" placeholder="Enter username"
+        autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"
+        enterkeyhint="next"/>
     </div>
     <div class="form-group">
-      <label class="form-label">Password</label>
-      <input type="password" id="loginPass" placeholder="Enter password"
-        autocomplete="current-password" onkeydown="if(event.key==='Enter') doLogin()"/>
+      <label class="form-label" for="loginPass">Password</label>
+      <input type="password" id="loginPass" name="password" placeholder="Enter password"
+        autocomplete="current-password" enterkeyhint="go"/>
     </div>
     <div class="error-msg" id="loginError"></div>
-    <button class="btn-primary" id="loginBtn" onclick="doLogin()">LOGIN</button>
-  </div>
+    <button type="submit" class="btn-primary" id="loginBtn">LOGIN</button>
+  </form>
   <div style="margin-top:1rem; font-size:0.72rem; color:rgba(255,255,255,0.8);">
     Session stays active for 24 hours of use
   </div>
@@ -647,7 +860,8 @@ header {
       <div class="brand-sub">Label Printing System</div>
     </div>
     <div style="display:flex; gap:8px; align-items:center;">
-      <div class="status-pill" onclick="checkStatus()" title="Click to refresh">
+      <div class="status-pill" onclick="checkStatus(true)" title="Tap to refresh" role="button" tabindex="0"
+        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();checkStatus(true);}">
         <div class="status-dot" id="statusDot"></div>
         <span id="statusText">Checking...</span>
       </div>
@@ -657,6 +871,7 @@ header {
         font-size:0.75rem; font-weight:600; cursor:pointer; letter-spacing:0.5px;
         touch-action:manipulation;">⏻ Logout</button>
     </div>
+    <div class="conn-banner" id="connBanner" role="status" hidden></div>
   </header>
 
   <div class="page">
@@ -699,6 +914,7 @@ header {
               onchange="onBestBeforeChange()"/>
           </div>
         </div>
+        <div id="useByNote" class="field-note" aria-live="polite"></div>
         <div id="dateNotice" class="roll-hint" aria-live="polite"></div>
         <div style="margin-top:8px;">
           <label class="form-label" style="margin-bottom:8px;">Roll Type (loaded in printer)</label>
@@ -721,10 +937,23 @@ header {
           <span id="printBtnContent">🖨️ PRINT LABELS</span>
         </button>
         <button class="btn-secondary" onclick="resetAll()">↺ RESET</button>
+        <div class="kbd-hint">
+          <kbd>Enter</kbd> next field · <kbd>↑</kbd><kbd>↓</kbd> pick product · <kbd>Esc</kbd> keep what you typed<br>
+          <kbd>Ctrl</kbd>+<kbd>Enter</kbd> print · <kbd>Alt</kbd>+<kbd>N</kbd> new item · <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>5</kbd> switch tabs
+        </div>
       </div>
 
       <!-- Ingredients label UI -->
       <div class="card" id="ingredientsSection" style="display:none;">
+        <label class="form-label" for="ingTemplate">Saved Ingredients</label>
+        <div class="inline-row" style="margin-bottom:0.75rem;">
+          <select id="ingTemplate" onchange="onIngTemplateChange()">
+            <option value="">— Pick a saved list —</option>
+          </select>
+          <button type="button" class="btn-small" onclick="saveIngTemplate()" title="Save the text below for next time">💾 Save</button>
+          <button type="button" class="btn-small btn-danger" id="ingTemplateDelete" onclick="deleteIngTemplate()"
+            aria-label="Delete the selected saved list" title="Delete saved list" disabled>🗑</button>
+        </div>
         <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
           Ingredients Text
         </div>
@@ -735,11 +964,14 @@ header {
           -webkit-appearance:none; appearance:none;"></textarea>
         <div class="form-group" style="margin-top:0.75rem; margin-bottom:0;">
           <label class="form-label">Quantity</label>
-          <input type="number" id="ingredientsQty" placeholder="Number of stickers" min="1" max="500" value="1"/>
+          <input type="number" id="ingredientsQty" placeholder="Number of stickers" min="1" max="500" value="1"
+            inputmode="numeric" pattern="[0-9]*" enterkeyhint="go"
+            onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submitIngredientsPrint();}"/>
         </div>
         <button class="btn-primary" id="ingredientsPrintBtn" onclick="submitIngredientsPrint()" style="margin-top:1rem;">
           <span id="ingredientsPrintBtnContent">🖨️ PRINT INGREDIENTS</span>
         </button>
+        <button class="btn-secondary" onclick="previewIngredients()">👁 PREVIEW</button>
         <button class="btn-secondary" onclick="resetIngredients()">↺ RESET</button>
       </div>
 
@@ -748,15 +980,19 @@ header {
         <div class="form-group">
           <label class="form-label" for="fssaiNumber">FSSAI Lic. Number</label>
           <input type="text" id="fssaiNumber" inputmode="numeric" autocomplete="off" maxlength="20"
-            placeholder="14-digit number"/>
+            placeholder="14-digit number" enterkeyhint="next"
+            onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();document.getElementById('fssaiQty').focus();}"/>
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label" for="fssaiQty">Quantity</label>
-          <input type="number" id="fssaiQty" placeholder="Number of stickers" min="1" max="500" value="1"/>
+          <input type="number" id="fssaiQty" placeholder="Number of stickers" min="1" max="500" value="1"
+            inputmode="numeric" pattern="[0-9]*" enterkeyhint="go"
+            onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submitFssaiPrint();}"/>
         </div>
         <button class="btn-primary" id="fssaiPrintBtn" onclick="submitFssaiPrint()" style="margin-top:1rem;">
           <span id="fssaiPrintBtnContent">🖨️ PRINT FSSAI LOGO</span>
         </button>
+        <button class="btn-secondary" onclick="previewFssai()">👁 PREVIEW</button>
         <button class="btn-secondary" onclick="resetFssai()">↺ RESET</button>
       </div>
 
@@ -765,34 +1001,52 @@ header {
 
     <!-- ── Tab: Products ── -->
     <div class="tab-page" id="tab-products">
-      <div class="section-title">Product List</div>
+      <div class="section-title" tabindex="-1">Product List</div>
       <div class="card" style="margin-bottom:0.75rem; padding:0.75rem 1rem;">
-        <label class="form-label" style="margin-bottom:8px;">Hotel</label>
-        <select id="productsHotel" onchange="onProductsHotelChange()">
-          <option value="general" selected>General</option>
-        </select>
+        <label class="form-label" for="productsHotel" style="margin-bottom:8px;">Hotel</label>
+        <div class="inline-row">
+          <select id="productsHotel" onchange="onProductsHotelChange()">
+            <option value="general" selected>General</option>
+          </select>
+          <button type="button" class="btn-small" onclick="addHotelHandler()">+ New hotel</button>
+        </div>
+        <div class="field-note" id="productsHotelNote"></div>
       </div>
       <div class="card">
         <div class="product-list" id="productList"></div>
         <div style="border-top:2px dashed #ddd; padding-top:0.75rem; margin-top:0.5rem;">
           <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Add New Product</div>
           <div class="add-product-row">
-            <input type="text" id="newProduct" placeholder="Product name" style="text-transform:uppercase;"/>
-            <input type="text" id="newWeight" placeholder="Weight (e.g. 2)" style="max-width:110px;"/>
+            <input type="text" id="newProduct" placeholder="Product name" aria-label="Product name" style="text-transform:uppercase;"
+              autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="next"/>
+            <input type="text" id="newWeight" placeholder="Weight (e.g. 2)" aria-label="Weight" style="max-width:110px;"
+              autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="next"/>
+            <input type="number" id="newShelf" placeholder="Shelf (mo)" aria-label="Shelf life in months (optional)"
+              min="1" max="60" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" style="max-width:110px;"
+              onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();addProductHandler();}"/>
             <button class="btn-small" onclick="addProductHandler()">+ Add</button>
           </div>
+          <div class="field-note">Shelf life sets Use By = Packed + that many months. Leave blank for 3 months.</div>
         </div>
       </div>
     </div>
 
     <!-- ── Tab: History ── -->
     <div class="tab-page" id="tab-history">
-      <div class="section-title">Print History</div>
+      <div class="section-title" tabindex="-1">Print History</div>
       <div class="card">
         <div class="logs-filters">
-          <input type="text" id="logFilterProduct" placeholder="Filter product..."
-            oninput="loadLogs()"/>
-          <select id="logFilterUser" onchange="loadLogs()" style="display:none;">
+          <input type="search" id="logFilterProduct" placeholder="Filter product..."
+            aria-label="Filter by product" oninput="onLogFilterInput()"
+            autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search"/>
+          <select id="logFilterDate" onchange="loadLogs()" aria-label="Date range">
+            <option value="all" selected>All dates</option>
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+          <select id="logFilterUser" onchange="loadLogs()" aria-label="Filter by user" style="display:none;">
             <option value="">All users</option>
           </select>
         </div>
@@ -806,6 +1060,7 @@ header {
         <div id="logsContainer">
           <div style="text-align:center; color:var(--muted); padding:2rem;">Loading...</div>
         </div>
+        <button type="button" class="btn-add-row" id="logsMore" onclick="loadLogs(true)" hidden>Load more</button>
       </div>
 
       <!-- Multi-select reprint bar — shown while history items are ticked -->
@@ -822,13 +1077,13 @@ header {
 
     <!-- ── Tab: Queue ── -->
     <div class="tab-page" id="tab-queue">
-      <div class="section-title">Print Queue</div>
+      <div class="section-title" tabindex="-1">Print Queue</div>
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
           <div class="logs-count" id="queueCount" style="margin:0;"></div>
           <div style="display:flex; gap:6px;">
-            <button class="btn-small" onclick="loadQueue()" style="padding:6px 10px; font-size:0.75rem; background:var(--saffron);">↻ Refresh</button>
-            <button class="btn-small" onclick="cancelAllQueue()" style="padding:6px 10px; font-size:0.75rem; background:var(--red);">✕ Cancel All</button>
+            <button class="btn-small" onclick="pollQueue()" style="padding:6px 10px; font-size:0.75rem; background:var(--saffron);">↻ Refresh</button>
+            <button class="btn-small" id="cancelAllBtn" onclick="cancelAllQueue()" style="padding:6px 10px; font-size:0.75rem; background:var(--red);">✕ Cancel All</button>
           </div>
         </div>
         <div id="queueContainer">
@@ -839,7 +1094,7 @@ header {
 
     <!-- ── Tab: Settings ── -->
     <div class="tab-page" id="tab-settings">
-      <div class="section-title">Print Settings</div>
+      <div class="section-title" tabindex="-1">Print Settings</div>
 
       <div class="card">
         <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Label Size (both rolls)</div>
@@ -885,34 +1140,59 @@ header {
           All four are mandatory FSSAI declarations and always print. There is no
           switch to hide them.
         </div>
+        <div id="labelContentLock" class="roll-hint" style="margin:0 0 14px;" hidden>
+          🔒 Only the admin can change these.
+        </div>
 
-        <label class="form-label" for="setFssaiNumber">FSSAI Lic. Number</label>
-        <input type="text" id="setFssaiNumber" placeholder="e.g. 13620011000563" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem; margin-bottom:12px;" />
-
-        <label class="form-label" for="setCompanyPrefix">Qualifying Phrase</label>
-        <input type="text" id="setCompanyPrefix" placeholder="e.g. Packed &amp; Marketed by" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem; margin-bottom:12px;" />
-
-        <label class="form-label" for="setCompanyName">Company Name</label>
-        <input type="text" id="setCompanyName" placeholder="e.g. SRI RADHE TRADERS" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem; margin-bottom:12px;" />
-
-        <label class="form-label" for="setCompanyAddress">Complete Address &mdash; incl. shop no. &amp; PIN</label>
-        <input type="text" id="setCompanyAddress" placeholder="e.g. Shop 12, Begum Bazar, Hyderabad, Telangana - 500012" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem;" />
+        <div class="form-group">
+          <label class="form-label" for="setFssaiNumber">FSSAI Lic. Number</label>
+          <input type="text" id="setFssaiNumber" placeholder="e.g. 13620011000563"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="setCompanyPrefix">Qualifying Phrase</label>
+          <input type="text" id="setCompanyPrefix" placeholder="e.g. Packed &amp; Marketed by"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="setCompanyName">Company Name</label>
+          <input type="text" id="setCompanyName" placeholder="e.g. SRI RADHE TRADERS"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" for="setCompanyAddress">Complete Address &mdash; incl. shop no. &amp; PIN</label>
+          <input type="text" id="setCompanyAddress" placeholder="e.g. Shop 12, Begum Bazar, Hyderabad, Telangana - 500012"/>
+        </div>
       </div>
 
       <button class="btn-primary" id="saveSettingsBtn" onclick="saveGeometry()" style="margin-top:0.25rem;">
         <span id="saveSettingsContent">💾 SAVE SETTINGS</span>
       </button>
+      <button class="btn-secondary" id="testPrintBtn" onclick="testPrint()">🧪 PRINT TEST LABEL</button>
+      <div class="field-note">Prints one label ("TEST" in place of the batch number) with the saved settings, to check the layout lines up with the roll. It does not use a batch number or show in History.</div>
+
+      <div class="section-title">This Device</div>
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">When a print fails</div>
+        <label class="check-row">
+          <input type="checkbox" id="alertBeep" onchange="saveAlertPrefs()"/>
+          <span>Beep (and vibrate on phones)</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="alertNotify" onchange="onAlertNotifyChange()"/>
+          <span>Show a system notification when this app isn't on screen</span>
+        </label>
+        <div class="field-note" id="alertNotifyNote"></div>
+      </div>
     </div>
 
   </div><!-- end page -->
 
   <!-- Bottom nav -->
   <nav class="bottom-nav">
-    <button class="nav-tab active" id="nav-print" onclick="switchTab('print')">
+    <button class="nav-tab active" id="nav-print" onclick="switchTab('print')" aria-current="page">
       <span class="nav-tab-icon">🖨️</span>Print
     </button>
     <button class="nav-tab" id="nav-queue" onclick="switchTab('queue')">
       <span class="nav-tab-icon">📑</span>Queue
+      <span class="nav-badge" id="queueBadge" hidden></span>
     </button>
     <button class="nav-tab" id="nav-products" onclick="switchTab('products')">
       <span class="nav-tab-icon">📦</span>Products
@@ -924,6 +1204,19 @@ header {
       <span class="nav-tab-icon">⚙️</span>Settings
     </button>
   </nav>
+
+  <!-- Label preview -->
+  <div class="modal" id="previewModal" role="dialog" aria-modal="true" aria-labelledby="previewTitle"
+    onclick="if (event.target === this) closePreview()" hidden>
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="previewTitle">LABEL PREVIEW</span>
+        <button type="button" class="modal-close" id="previewClose" onclick="closePreview()" aria-label="Close preview">×</button>
+      </div>
+      <img id="previewImg" alt="Preview of the label as it will print" hidden/>
+      <div class="modal-msg" id="previewMsg" aria-live="polite"></div>
+    </div>
+  </div>
 
 </div><!-- end mainApp -->
 
@@ -945,15 +1238,35 @@ const getRefreshToken = () => localStorage.getItem('refresh_token');
 const getUsername     = () => localStorage.getItem('username') || '';
 const getIsAdmin      = () => localStorage.getItem('is_admin') === 'true';
 
+// fetch() that also records whether the server answered, for the banner.
+// When the tunnel is down, ngrok's error page carries no CORS headers, so
+// that also lands in the catch as a network error.
+async function netFetch(url, opts) {
+  try {
+    const res = await fetch(url, opts);
+    setServerReachable(true);
+    return res;
+  } catch (e) {
+    setServerReachable(false);
+    throw e;
+  }
+}
+
+// → true (new tokens), false (refresh token rejected: log in again), or
+// 'offline' (no answer). Offline must not log anyone out: opening the app
+// without signal used to clear the tokens and show the login screen.
 async function refreshTokens() {
   const rt = getRefreshToken();
   if (!rt) return false;
+  let res;
   try {
-    const res = await fetch(`${API}/refresh`, {
+    res = await netFetch(`${API}/refresh`, {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'ngrok-skip-browser-warning':'true'},
       body: JSON.stringify({refresh_token: rt})
     });
+  } catch { return 'offline'; }
+  try {
     if (!res.ok) { clearTokens(); return false; }
     saveTokens(await res.json());
     return true;
@@ -964,13 +1277,14 @@ async function apiFetch(url, opts={}) {
   opts.headers = opts.headers || {};
   opts.headers['Authorization'] = `Bearer ${getAccessToken()}`;
   opts.headers['ngrok-skip-browser-warning'] = 'true';
-  let res = await fetch(url, opts);
+  let res = await netFetch(url, opts);
   if (res.status === 401) {
     const ok = await refreshTokens();
+    if (ok === 'offline') throw new TypeError('Cannot reach server');
     if (!ok) { showLogin(); return null; }
     opts.headers['Authorization'] = `Bearer ${getAccessToken()}`;
     opts.headers['ngrok-skip-browser-warning'] = 'true';
-    res = await fetch(url, opts);
+    res = await netFetch(url, opts);
     if (res.status === 401) { showLogin(); return null; }
   }
   return res;
@@ -980,6 +1294,13 @@ async function apiFetch(url, opts={}) {
 function showLogin() {
   clearTokens();
   resetLogSelection();
+  // Stop polling and forget the last session's queue
+  clearTimeout(queuePollTimer);
+  queuePollSeq++;
+  queueJobs = null;
+  seenFailed.clear();
+  updateQueueBadge(0, 0);
+  closePreview();
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('mainApp').style.display     = 'none';
 }
@@ -997,7 +1318,7 @@ async function doLogin() {
   if (!user || !pass) { err.textContent='Enter username and password'; err.style.display='block'; return; }
   btn.innerHTML = '<div class="spinner"></div>'; btn.disabled = true;
   try {
-    const res  = await fetch(`${API}/login`, {
+    const res  = await netFetch(`${API}/login`, {
       method:'POST',
       headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning':'true'},
       body: JSON.stringify({username:user, password:pass})
@@ -1010,7 +1331,9 @@ async function doLogin() {
 }
 
 window.onload = () => {
+  updateConnUI();
   const rt = getRefreshToken();
+  // 'offline' opens the app anyway: the saved draft is still there to work on
   if (rt) { refreshTokens().then(ok => { if(ok){showApp();initApp();}else{showLogin();} }); }
   else showLogin();
 };
@@ -1022,14 +1345,235 @@ function doLogout() {
   showToast('Logged out');
 }
 
+let appStarted = false;
+
 async function initApp() {
-  checkStatus();
   await loadProducts();
   loadSettings();
   restoreDraftOrDefault();
+  renderAlertPrefs();
+  pollQueue();   // also refreshes the printer status pill
+  if (!appStarted) {
+    appStarted = true;
+    // Coming back to the app (tablet woken, tab switched back) is when state
+    // is most likely stale: the day may have changed, jobs may have finished.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || !getAccessToken()) return;
+      checkDayRollover();
+      pollQueue();
+    });
+    setInterval(checkDayRollover, 60 * 1000);
+    document.addEventListener('keydown', onGlobalKey);
+    // App shortcuts (long-press the icon) open index.html?tab=queue
+    const tab = new URLSearchParams(location.search).get('tab');
+    if (tab) switchTab(tab);
+    // A tapped "print failed" notification asks the open app to show the Queue
+    navigator.serviceWorker?.addEventListener('message', e => {
+      if (e.data?.type === 'open-tab') switchTab(e.data.tab);
+    });
+  }
+}
+
+// ── Keyboard shortcuts ───────────────────────
+const isTabActive = name => document.getElementById(`tab-${name}`)?.classList.contains('active');
+
+function onGlobalKey(e) {
+  if (document.getElementById('mainApp').style.display !== 'block') return;
+  const modalOpen = !document.getElementById('previewModal').hidden;
+  if (e.key === 'Escape' && modalOpen) { closePreview(); return; }
+  if (modalOpen) return;
+
+  // Ctrl/⌘+Enter prints whatever the Print tab is showing, from any field
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (!isTabActive('print')) return;
+    e.preventDefault();
+    const type = document.getElementById('stickerType').value;
+    if (type === 'ingredients') { if (!document.getElementById('ingredientsPrintBtn').disabled) submitIngredientsPrint(); }
+    else if (type === 'fssai')  { if (!document.getElementById('fssaiPrintBtn').disabled) submitFssaiPrint(); }
+    else if (!document.getElementById('printBtn').disabled) submitPrint();
+    return;
+  }
+
+  // Alt+1…5 switch tabs, Alt+N starts a new item. e.code, not e.key: on a
+  // Mac, Option+digit types a symbol.
+  if (e.altKey && !e.ctrlKey && !e.metaKey) {
+    const digit = /^Digit([1-5])$/.exec(e.code);
+    if (digit) { e.preventDefault(); switchTab(TAB_ORDER[digit[1] - 1]); return; }
+    if (e.code === 'KeyN') {
+      e.preventDefault();
+      if (!isTabActive('print')) switchTab('print');
+      if (document.getElementById('stickerType').value !== 'product') {
+        document.getElementById('stickerType').value = 'product';
+        onStickerTypeChange();
+      }
+      focusNewItem();
+    }
+  }
+}
+
+// On desktop, the mouse wheel over a focused number box changes its value, so
+// scrolling the page past a quantity could quietly turn 10 into 7.
+document.addEventListener('wheel', e => {
+  const el = document.activeElement;
+  if (el && el.type === 'number' && e.target === el) el.blur();
+}, { passive: true });
+
+// ── Phone keyboard ───────────────────────────
+// While the on-screen keyboard is up, body gets .kb-open, which hides the
+// fixed bottom nav and reprint bar (see CSS).
+const isTouch = () => matchMedia('(pointer: coarse)').matches;
+const TYPING_TYPES = ['text', 'search', 'number', 'password', 'email', 'tel', 'url'];
+let fullViewportH = 0;   // tallest viewport seen with no field focused
+
+function isTypingField(el) {
+  return !!el && !el.disabled && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && TYPING_TYPES.includes(el.type)));
+}
+
+function updateKbOpen() {
+  const typing = isTouch() && isTypingField(document.activeElement);
+  const vv = window.visualViewport;
+  const h  = vv ? vv.height : window.innerHeight;
+  if (!typing) fullViewportH = Math.max(fullViewportH, h);
+  // Focus alone isn't enough: after Android's Back closes the keyboard the
+  // field stays focused, and the nav should come back.
+  const kbUp = !vv || !fullViewportH || h < fullViewportH * 0.8;
+  document.body.classList.toggle('kb-open', typing && kbUp);
+}
+document.addEventListener('focusin', updateKbOpen);
+document.addEventListener('focusout', () => setTimeout(updateKbOpen, 0));
+window.visualViewport?.addEventListener('resize', updateKbOpen);
+window.addEventListener('resize', updateKbOpen);
+window.addEventListener('orientationchange', () => { fullViewportH = 0; setTimeout(updateKbOpen, 300); });
+updateKbOpen();   // the no-keyboard height, before anyone taps a field
+
+// ── Connection ───────────────────────────────
+let serverReachable = true;
+
+function setServerReachable(ok) {
+  if (serverReachable === ok) return;
+  serverReachable = ok;
+  updateConnUI();
+  if (ok && getAccessToken()) {
+    // Back: fetch what couldn't load while away
+    if (!hotels.length) loadProducts();
+    pollQueue();
+  }
+}
+
+function updateConnUI() {
+  const offline = !navigator.onLine;
+  const banner  = document.getElementById('connBanner');
+  if (offline) {
+    banner.textContent = "📵 You're offline. Your items are kept on this device — printing works again once you're back online.";
+  } else if (!serverReachable) {
+    banner.innerHTML = "⚠️ Can't reach the print server. Your items are kept on this device."
+      + '<button type="button" class="link-btn" onclick="retryConnection()">Try again</button>';
+  }
+  banner.hidden = !offline && serverReachable;
+  // Printing can't work with no network at all; with the server merely
+  // unreachable the button stays live, since pressing it is also a retry.
+  updateSummary();
+  ['ingredientsPrintBtn', 'fssaiPrintBtn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b && !b.querySelector('.spinner')) b.disabled = offline;
+  });
+}
+
+function retryConnection() {
+  checkStatus();
+  if (!hotels.length) loadProducts();
+  pollQueue();
+}
+
+window.addEventListener('offline', updateConnUI);
+window.addEventListener('online', () => { updateConnUI(); if (getAccessToken()) retryConnection(); });
+
+// ── Failure alerts ───────────────────────────
+// Per device: a beep suits the shop PC, a notification suits a phone in a pocket.
+const ALERT_KEY = 'srt_alerts';
+
+function alertPrefs() {
+  try { return { beep: true, notify: false, ...JSON.parse(localStorage.getItem(ALERT_KEY) || '{}') }; }
+  catch { return { beep: true, notify: false }; }
+}
+
+function saveAlertPrefs() {
+  try {
+    localStorage.setItem(ALERT_KEY, JSON.stringify({
+      beep:   document.getElementById('alertBeep').checked,
+      notify: document.getElementById('alertNotify').checked,
+    }));
+  } catch {}
+}
+
+function renderAlertPrefs() {
+  const p = alertPrefs();
+  const supported = 'Notification' in window;
+  const perm = supported ? Notification.permission : 'unsupported';
+  document.getElementById('alertBeep').checked   = p.beep;
+  document.getElementById('alertNotify').checked = p.notify && perm === 'granted';
+  document.getElementById('alertNotify').disabled = !supported;
+  document.getElementById('alertNotifyNote').textContent =
+    !supported       ? "This browser can't show notifications."
+    : perm === 'denied' ? 'Notifications are blocked for this site — allow them in the browser\'s site settings, then tick this again.'
+    : 'Only while jobs are waiting, and only if the browser keeps the app running in the background.';
+}
+
+async function onAlertNotifyChange() {
+  const box = document.getElementById('alertNotify');
+  if (box.checked && 'Notification' in window && Notification.permission !== 'granted') {
+    // Asked here, from the tap, because browsers only allow the prompt after one
+    const perm = await Notification.requestPermission().catch(() => 'denied');
+    if (perm !== 'granted') box.checked = false;
+  }
+  saveAlertPrefs();
+  renderAlertPrefs();
+}
+
+let audioCtx = null;
+function beep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume?.();
+    const t = audioCtx.currentTime;
+    [0, 0.28].forEach(d => {
+      const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+      osc.frequency.value = 880;
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      gain.gain.setValueAtTime(0.0001, t + d);
+      gain.gain.exponentialRampToValueAtTime(0.3, t + d + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.2);
+      osc.start(t + d); osc.stop(t + d + 0.22);
+    });
+  } catch {}
+}
+
+async function showSystemNotification(body) {
+  const title = 'Print failed — SRT Labels';
+  const opts  = { body, tag: 'srt-print-failed', renotify: true, icon: 'icon-192.png' };
+  // Android only shows notifications through the service worker
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) { await reg.showNotification(title, opts); return; }
+  } catch {}
+  try {
+    const n = new Notification(title, opts);
+    n.onclick = () => { window.focus(); switchTab('queue'); n.close(); };
+  } catch {}
+}
+
+function alertFailure(message) {
+  const p = alertPrefs();
+  if (p.beep) { navigator.vibrate?.([200, 100, 200]); beep(); }
+  if (p.notify && document.visibilityState !== 'visible'
+      && 'Notification' in window && Notification.permission === 'granted') {
+    showSystemNotification(message);
+  }
 }
 
 // ── Roll type setting ────────────────────────
+let savedSettings = null;   // last settings the server confirmed, to spot unsaved edits
+
 async function loadSettings() {
   try {
     const res = await apiFetch(`${API}/settings`);
@@ -1042,21 +1586,42 @@ async function loadSettings() {
   } catch {}
 }
 
+const GEOMETRY_FIELDS = {
+  setLabelW: 'label_width_mm', setLabelH: 'label_height_mm',
+  setSingleVGap: 'single_vgap_mm', setDoubleVGap: 'double_vgap_mm',
+  setDoubleGap: 'double_gap_mm', setDoubleMargin: 'double_margin_mm',
+};
+const LABEL_TEXT_FIELDS = {
+  setFssaiNumber: 'fssai_number', setCompanyPrefix: 'company_prefix',
+  setCompanyName: 'company_name', setCompanyAddress: 'company_address',
+};
+
 function applySettingsToForm(s) {
   if (!s) return;
+  savedSettings = s;
   const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
-  set('setLabelW', s.label_width_mm);
-  set('setLabelH', s.label_height_mm);
-  set('setSingleVGap', s.single_vgap_mm);
-  set('setDoubleVGap', s.double_vgap_mm);
-  set('setDoubleGap', s.double_gap_mm);
-  set('setDoubleMargin', s.double_margin_mm);
-  // Label content fields — all mandatory declarations
-  set('setFssaiNumber', s.fssai_number);
-  set('setCompanyPrefix', s.company_prefix);
-  set('setCompanyName', s.company_name);
-  set('setCompanyAddress', s.company_address);
+  Object.entries(GEOMETRY_FIELDS).forEach(([id, key]) => set(id, s[key]));
+  // Label content fields — all mandatory declarations, editable by the admin only
+  const admin = getIsAdmin();
+  Object.entries(LABEL_TEXT_FIELDS).forEach(([id, key]) => {
+    set(id, s[key]);
+    const el = document.getElementById(id);
+    if (el) el.disabled = !admin;
+  });
+  document.getElementById('labelContentLock').hidden = admin;
+  // The FSSAI sticker is almost always our own licence number
+  const fssaiEl = document.getElementById('fssaiNumber');
+  if (fssaiEl && !fssaiEl.value && s.fssai_number) fssaiEl.value = s.fssai_number;
   updateDoubleWidthPreview();
+}
+
+function settingsDirty() {
+  if (!savedSettings) return false;
+  const geoChanged = Object.entries(GEOMETRY_FIELDS).some(([id, key]) =>
+    parseFloat(document.getElementById(id).value) !== parseFloat(savedSettings[key]));
+  const textChanged = Object.entries(LABEL_TEXT_FIELDS).some(([id, key]) =>
+    document.getElementById(id).value.trim() !== String(savedSettings[key] ?? ''));
+  return geoChanged || textChanged;
 }
 
 function updateDoubleWidthPreview() {
@@ -1068,27 +1633,21 @@ function updateDoubleWidthPreview() {
   if (el) el.innerHTML = `2-up media width: <strong>${total} mm</strong> &nbsp;(${m} + ${w} + ${g} + ${w} + ${m})`;
 }
 
+// Returns true once the server has accepted the settings.
 async function saveGeometry() {
   const btn     = document.getElementById('saveSettingsBtn');
   const content = document.getElementById('saveSettingsContent');
-  const payload = {
-    label_width_mm:   parseFloat(document.getElementById('setLabelW').value),
-    label_height_mm:  parseFloat(document.getElementById('setLabelH').value),
-    single_vgap_mm:   parseFloat(document.getElementById('setSingleVGap').value),
-    double_vgap_mm:   parseFloat(document.getElementById('setDoubleVGap').value),
-    double_gap_mm:    parseFloat(document.getElementById('setDoubleGap').value),
-    double_margin_mm: parseFloat(document.getElementById('setDoubleMargin').value),
-    fssai_number:     document.getElementById('setFssaiNumber').value.trim(),
-    company_prefix:   document.getElementById('setCompanyPrefix').value.trim(),
-    company_name:     document.getElementById('setCompanyName').value.trim(),
-    company_address:  document.getElementById('setCompanyAddress').value.trim(),
-  };
-  const numFields = ['label_width_mm','label_height_mm','single_vgap_mm','double_vgap_mm','double_gap_mm','double_margin_mm'];
-  if (numFields.some(k => isNaN(payload[k]))) { showToast('Fill all geometry fields with numbers'); return; }
-  if (!payload.fssai_number)    { showToast('FSSAI number cannot be empty'); return; }
-  if (!payload.company_prefix)  { showToast('Qualifying phrase cannot be empty'); return; }
-  if (!payload.company_name)    { showToast('Company name cannot be empty'); return; }
-  if (!payload.company_address) { showToast('Company address cannot be empty'); return; }
+  const payload = {};
+  Object.entries(GEOMETRY_FIELDS).forEach(([id, key]) => { payload[key] = parseFloat(document.getElementById(id).value); });
+  if (Object.values(payload).some(v => isNaN(v))) { showToast('Fill all geometry fields with numbers'); return false; }
+  // Only the admin may change the label content, so nobody else sends it
+  if (getIsAdmin()) {
+    Object.entries(LABEL_TEXT_FIELDS).forEach(([id, key]) => { payload[key] = document.getElementById(id).value.trim(); });
+    if (!payload.fssai_number)    { showToast('FSSAI number cannot be empty'); return false; }
+    if (!payload.company_prefix)  { showToast('Qualifying phrase cannot be empty'); return false; }
+    if (!payload.company_name)    { showToast('Company name cannot be empty'); return false; }
+    if (!payload.company_address) { showToast('Company address cannot be empty'); return false; }
+  }
 
   btn.disabled = true; content.innerHTML = '<div class="spinner"></div>';
   try {
@@ -1097,10 +1656,29 @@ async function saveGeometry() {
       body: JSON.stringify(payload)
     });
     const data = res ? await res.json() : null;
-    if (res && res.ok) { applySettingsToForm(data); updateSummary(); showToast('✅ Settings saved'); }
-    else { showToast((data && data.error) || 'Could not save settings'); }
+    if (res && res.ok) { applySettingsToForm(data); updateSummary(); showToast('✅ Settings saved'); return true; }
+    showToast((data && data.error) || 'Could not save settings');
   } catch { showToast('Could not save settings'); }
   finally { btn.disabled = false; content.innerHTML = '💾 SAVE SETTINGS'; }
+  return false;
+}
+
+async function testPrint() {
+  if (settingsDirty()) {
+    if (!confirm('You have unsaved changes. The test label prints with the saved settings.\n\nSave your changes and print the test label?')) return;
+    if (!await saveGeometry()) return;
+  }
+  const btn = document.getElementById('testPrintBtn');
+  btn.disabled = true;
+  try {
+    const res = await apiFetch(`${API}/test-print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    if (!res) return;
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Could not queue the test label'); return; }
+    showToast(`🧪 Test label queued${data.quantity > 1 ? ' (a 2-up pair)' : ''}`);
+    pollQueue();
+  } catch { showToast('❌ Cannot reach server'); }
+  finally { btn.disabled = false; }
 }
 
 async function onRollTypeChange() {
@@ -1123,15 +1701,114 @@ async function onRollTypeChange() {
   }
 }
 
+// ── Dates ─────────────────────────────────────
+// Use By normally follows each product's shelf life (Packed + N months), so
+// a form holding a 3-month and a 6-month product prints each correctly. Once
+// someone picks a Use By by hand, that one date applies to every item.
+const DEFAULT_SHELF_MONTHS = 3;
+let useByAuto    = true;   // false once Use By was set by hand
+let packedCustom = false;  // Packed Date picked by hand / from history, not "today"
+let datesDay     = '';     // the day (YYYY-MM-DD) the dates were last checked against
+
+const todayStr = () => formatDateInput(new Date());
+
+function parseInputDate(s) {
+  // 'YYYY-MM-DD' → local midnight. new Date('YYYY-MM-DD') would read it as UTC.
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+}
+
+function addMonths(d, n) {
+  // Same as the server's relativedelta(months=n): 31 Jan + 1 month is 28/29 Feb.
+  // setMonth() would roll over into March instead.
+  const r   = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  const dim = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+  r.setDate(Math.min(d.getDate(), dim));
+  return r;
+}
+
+function printedDatePair(packed, expiry) {
+  // Mirrors format_date_pair() in parser.py: up to 3 months → DD/MM/YY, longer → MON YYYY.
+  if (expiry > addMonths(packed, 3)) {
+    const my = d => `${MONTHS_UPPER[d.getMonth()]} ${d.getFullYear()}`;
+    return [my(packed), my(expiry)];
+  }
+  const dmy = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(2)}`;
+  return [dmy(packed), dmy(expiry)];
+}
+
+function productEntry(name) {
+  const n = String(name || '').trim().toUpperCase();
+  return n ? products.find(p => p.name.toUpperCase() === n) : undefined;
+}
+const shelfMonthsFor = name => productEntry(name)?.shelf_months || DEFAULT_SHELF_MONTHS;
+
 function setDefaultDates() {
-  const today = new Date();
+  document.getElementById('packedDate').value = todayStr();
+  useByAuto    = true;
+  packedCustom = false;
+  datesDay     = todayStr();
+  refreshUseBy();
+}
+
+// Recompute Use By and each item's printed dates from the current form.
+function refreshUseBy() {
+  const packed = parseInputDate(document.getElementById('packedDate')?.value);
+  const bbEl   = document.getElementById('bestBeforeDate');
+  const shelves = new Set();
+  document.querySelectorAll('.job-card').forEach(row => {
+    const id   = row.id.replace('row-','');
+    const meta = document.getElementById(`meta-${id}`);
+    const name = (document.getElementById(`prod-${id}`)?.value || '').trim();
+    if (!meta) return;
+    if (!name || !packed) { meta.textContent = ''; return; }
+    const shelf  = shelfMonthsFor(name);
+    const expiry = useByAuto ? addMonths(packed, shelf) : parseInputDate(bbEl.value);
+    if (useByAuto) shelves.add(shelf);
+    if (!expiry) { meta.textContent = ''; return; }
+    const [p, e] = printedDatePair(packed, expiry);
+    meta.textContent = `Prints: Packed ${p} · Use By ${e}` + (useByAuto ? ` (${shelf}-month shelf life)` : '');
+  });
+  if (useByAuto && packed) {
+    // One shared shelf life shows as a date; mixed ones leave the box empty
+    // and each item shows its own.
+    const only = shelves.size ? [...shelves][0] : DEFAULT_SHELF_MONTHS;
+    bbEl.value = shelves.size > 1 ? '' : formatDateInput(addMonths(packed, only));
+  }
+  const note = document.getElementById('useByNote');
+  if (!note) return;
+  if (!useByAuto) {
+    note.innerHTML = 'Use By set by hand — it applies to every item. '
+      + '<button type="button" class="link-btn" onclick="resetUseByAuto()">Use each product\'s shelf life</button>';
+  } else if (shelves.size > 1) {
+    note.textContent = 'Use By differs by product — each item shows its own dates.';
+  } else {
+    const only = shelves.size ? [...shelves][0] : DEFAULT_SHELF_MONTHS;
+    note.textContent = `Use By = Packed + ${only} months (product shelf life).`;
+  }
+}
+
+function resetUseByAuto() {
+  useByAuto = true;
+  refreshUseBy();
+  saveDraft();
+}
+
+// A page left open overnight must not keep printing yesterday's Packed date.
+function checkDayRollover() {
+  const today = todayStr();
+  if (!datesDay || datesDay === today) return;
+  datesDay = today;
   const packedEl = document.getElementById('packedDate');
-  const bbEl     = document.getElementById('bestBeforeDate');
-  if (packedEl) packedEl.value = formatDateInput(today);
-  if (bbEl) {
-    const bb = new Date(today);
-    bb.setMonth(bb.getMonth() + 3);
-    bbEl.value = formatDateInput(bb);
+  if (!packedCustom) {
+    packedEl.value = today;
+    refreshUseBy();
+    saveDraft();
+    if (useByAuto) showToast('📅 New day — dates updated to today');
+    else showDateNotice('📅 New day — Packed Date moved to today. Use By was set by hand; check it before printing.');
+  } else {
+    const d = parseInputDate(packedEl.value);
+    showDateNotice(`⚠️ It's a new day. Packed Date is still <strong>${d ? d.toLocaleDateString('en-GB') : '—'}</strong> — change it if you are packing today.`);
   }
 }
 
@@ -1152,39 +1829,63 @@ function formatDateForServer(dateStr) {
 }
 
 function onPackedDateChange() {
-  // When packed date changes, auto-update best before to packed + 3 months
+  // A new Packed date recomputes Use By from the products' shelf life, as it always did
   const packedVal = document.getElementById('packedDate')?.value;
   if (!packedVal) return;
-  const packed = new Date(packedVal);
-  const bb = new Date(packed);
-  bb.setMonth(bb.getMonth() + 3);
-  const bbEl = document.getElementById('bestBeforeDate');
-  if (bbEl) bbEl.value = formatDateInput(bb);
+  packedCustom = packedVal !== todayStr();
+  datesDay     = todayStr();
+  useByAuto    = true;
   hideDateNotice();
+  refreshUseBy();
   saveDraft();
 }
 
 function onBestBeforeChange() {
+  // Clearing the box hands Use By back to the products' shelf life
+  useByAuto = !document.getElementById('bestBeforeDate').value;
   hideDateNotice();
+  refreshUseBy();
   saveDraft();
 }
 
 // ── Tabs ─────────────────────────────────────
+const TAB_ORDER = ['print', 'queue', 'products', 'history', 'settings'];
+
 function switchTab(name) {
+  if (!TAB_ORDER.includes(name)) return;
   document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById(`tab-${name}`).classList.add('active');
-  document.getElementById(`nav-${name}`).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t => { t.classList.remove('active'); t.removeAttribute('aria-current'); });
+  const page = document.getElementById(`tab-${name}`);
+  page.classList.add('active');
+  const nav = document.getElementById(`nav-${name}`);
+  nav.classList.add('active');
+  nav.setAttribute('aria-current', 'page');
+  // Start the new tab at its top, with focus on its heading, so keyboard and
+  // screen-reader users land in the page they opened, not back on the nav.
+  window.scrollTo(0, 0);
+  page.querySelector('.section-title')?.focus({ preventScroll: true });
   if (name === 'history') loadLogs();
   if (name === 'products') loadProducts();
-  if (name === 'queue') loadQueue();
+  if (name === 'queue') { renderQueue(); pollQueue(); }
   if (name === 'settings') loadSettings();
 }
 
 // ── Status ───────────────────────────────────
-async function checkStatus() {
+let printerMessage = '';
+
+function applyPrinterStatus(online, message) {
+  printerOnline  = online;
+  printerMessage = message || '';
   const dot  = document.getElementById('statusDot');
   const text = document.getElementById('statusText');
+  dot.className    = 'status-dot ' + (online ? 'online' : 'offline');
+  text.textContent = online ? 'Online' : 'Offline';
+  dot.parentElement.title = (printerMessage ? printerMessage + ' — ' : '') + 'Tap to refresh';
+}
+
+// `announce` shows the full status (e.g. "Out of labels") after a tap on the pill.
+async function checkStatus(announce) {
+  const dot = document.getElementById('statusDot');
   dot.className = 'status-dot';
   try {
     const res  = await apiFetch(`${API}/status`);
@@ -1193,22 +1894,27 @@ async function checkStatus() {
     const ok   = (typeof data.online === 'boolean')
                  ? data.online
                  : data.status.includes('online');   // older server
-    printerOnline    = ok;
-    dot.className    = 'status-dot ' + (ok ? 'online' : 'offline');
-    text.textContent = ok ? 'Online' : 'Offline';
-  } catch { printerOnline=false; dot.className='status-dot offline'; text.textContent='Offline'; }
+    applyPrinterStatus(ok, data.status);
+  } catch { applyPrinterStatus(false, 'Cannot reach the server'); }
+  if (announce && printerMessage) showToast(printerMessage);
+}
+
+// Asked right before printing, so the offline warning reflects the printer
+// now rather than when the app was opened.
+async function confirmPrinterReady() {
+  await checkStatus();
+  if (printerOnline !== false) return true;
+  return confirm(`⚠️ The printer appears to be offline.\n${printerMessage ? '\n' + printerMessage + '\n' : ''}\nYour job will be queued and will print automatically once the printer is back online. Continue?`);
 }
 
 // ── Job rows ─────────────────────────────────
 let rowId = 0;
-let products = [];       // current hotel's products for combo dropdown
-let allByHotel = {};     // { hotel: [{name, weight}, ...] }
+let products = [];       // print hotel's products + inherited General ones, for the combo dropdown
+let allByHotel = {};     // { hotel: [{name, weight, shelf_months}, ...] }
 let hotels = [];         // ['general', ...]
 let printerOnline = null; // null=unknown, true/false from checkStatus
 let comboState = {};     // { [rowId]: { items, hasNew, active, val } }
 const DRAFT_KEY = 'srt_print_draft';
-
-const escJs = s => (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
 function getUOM(val) {
   const s = String(val ?? '').trim();
@@ -1234,11 +1940,11 @@ function updateUOM(id) {
 }
 
 function onProductSelect(id) {
-  const name  = (document.getElementById(`prod-${id}`)?.value||'').trim().toUpperCase();
-  const match = products.find(p => p.name.toUpperCase() === name);
+  const match = productEntry(document.getElementById(`prod-${id}`)?.value);
   if (match) {
-    const n = parseFloat(match.weight);
-    document.getElementById(`wt-${id}`).value = isNaN(n) ? '' : n;
+    // weightForForm keeps the unit when it isn't the one the bare number implies
+    // ('16 g' stays '16 g'); a plain parseFloat turned it into 16 → printed as 16 kg.
+    document.getElementById(`wt-${id}`).value = weightForForm(match.weight);
     updateUOM(id);
   } else {
     document.getElementById(`wt-${id}`).value = '';
@@ -1255,30 +1961,39 @@ function addRow(product='', qty='', weight='') {
   div.id = `row-${id}`;
   const uom = weight ? getUOM(weight) : {label:'—', cls:''};
 
+  // Tab order is product → quantity → weight → 👁 ⧉ ×. The corner buttons are
+  // absolutely positioned, so they sit last in the markup without moving on
+  // screen. The +10/+25 presets are a tap shortcut; typing the number is the
+  // keyboard way, so they stay out of the Tab order.
   div.innerHTML = `
-    <button class="job-card-clone" onclick="cloneRow(${id})" aria-label="Duplicate this item" title="Duplicate item">⧉</button>
-    <button class="job-card-remove" onclick="removeRow(${id})" aria-label="Remove this item" title="Remove item">×</button>
     <div class="combo-wrap" style="margin-bottom:8px;">
-      <input type="text" id="prod-${id}" placeholder="Product name" value="${product}"
-        style="text-transform:uppercase; padding-right:82px;"
-        aria-label="Product name"
-        oninput="onComboInput(${id})" onfocus="openCombo(${id})"
-        onblur="onComboBlur(${id})" onkeydown="onComboKey(event, ${id})" autocomplete="off"/>
-      <div class="combo-dropdown" id="combo-dd-${id}"></div>
+      <input type="text" id="prod-${id}" class="prod-input" placeholder="Product name" value="${escHtml(product)}"
+        aria-label="Product name" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="combo-dd-${id}"
+        autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next"
+        oninput="onComboInput(${id}, event)" oncompositionend="onComboInput(${id})" onfocus="onProductFocus(${id})"
+        onblur="onComboBlur(${id})" onkeydown="onComboKey(event, ${id})"/>
+      <div class="combo-dropdown" id="combo-dd-${id}" role="listbox" aria-label="Products"></div>
     </div>
     <div class="job-row-fields">
-      <input type="number" id="qty-${id}" placeholder="Quantity" min="1" max="500" value="${qty}"
+      <input type="number" id="qty-${id}" placeholder="Quantity" min="1" max="500" value="${escHtml(qty)}"
+        inputmode="numeric" pattern="[0-9]*" enterkeyhint="next"
         aria-label="Quantity" oninput="onQtyInput(${id})" onkeydown="onQtyKey(event, ${id})"/>
-      <input type="text"   id="wt-${id}"  placeholder="Weight" value="${weight}"
-        aria-label="Weight" oninput="onWeightInput(${id})"/>
-      <div class="uom-badge ${uom.cls}" id="uom-${id}" aria-hidden="true">${uom.label||'—'}</div>
+      <input type="text"   id="wt-${id}"  placeholder="Weight" value="${escHtml(weight)}"
+        autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next"
+        aria-label="Weight" oninput="onWeightInput(${id})" onkeydown="onWeightKey(event, ${id})"/>
+      <div class="uom-badge ${uom.cls}" id="uom-${id}" aria-hidden="true">${escHtml(uom.label||'—')}</div>
     </div>
+    <div class="row-meta" id="meta-${id}"></div>
+    <div class="row-error" id="err-${id}" role="alert"></div>
     <div class="qty-presets">
-      <button type="button" class="qty-preset" onclick="bumpQty(${id},10)" aria-label="Add 10 to quantity">+10</button>
-      <button type="button" class="qty-preset" onclick="bumpQty(${id},25)" aria-label="Add 25 to quantity">+25</button>
-      <button type="button" class="qty-preset" onclick="bumpQty(${id},50)" aria-label="Add 50 to quantity">+50</button>
-      <button type="button" class="qty-preset" onclick="setQty(${id},100)" aria-label="Set quantity to 100">100</button>
+      <button type="button" tabindex="-1" class="qty-preset" onclick="bumpQty(${id},10)" aria-label="Add 10 to quantity">+10</button>
+      <button type="button" tabindex="-1" class="qty-preset" onclick="bumpQty(${id},25)" aria-label="Add 25 to quantity">+25</button>
+      <button type="button" tabindex="-1" class="qty-preset" onclick="bumpQty(${id},50)" aria-label="Add 50 to quantity">+50</button>
+      <button type="button" tabindex="-1" class="qty-preset" onclick="setQty(${id},100)" aria-label="Set quantity to 100">100</button>
     </div>
+    <button type="button" class="job-card-preview" onclick="previewRow(${id})" aria-label="Preview this label" title="Preview label">👁</button>
+    <button type="button" class="job-card-clone" onclick="cloneRow(${id})" aria-label="Duplicate this item" title="Duplicate item">⧉</button>
+    <button type="button" class="job-card-remove" onclick="removeRow(${id})" aria-label="Remove this item" title="Remove item">×</button>
   `;
   document.getElementById('jobRows').appendChild(div);
   renderCombo(id, '');
@@ -1286,12 +2001,43 @@ function addRow(product='', qty='', weight='') {
 }
 
 function removeRow(id) {
-  const rows = document.querySelectorAll('.job-card');
+  const rows = Array.from(document.querySelectorAll('.job-card'));
   if (rows.length <= 1) return;
-  document.getElementById(`row-${id}`)?.remove();
-  delete comboState[id];
+  // × sits next to ⧉ and is easy to hit by mistake, so a filled row can be put back
+  const index = rows.findIndex(r => r.id === `row-${id}`);
+  const saved = {
+    product: document.getElementById(`prod-${id}`)?.value || '',
+    qty:     document.getElementById(`qty-${id}`)?.value || '',
+    weight:  document.getElementById(`wt-${id}`)?.value || '',
+  };
+  removeRowEl(id);
   ensureTrailingRow();
   refreshAfterChange();
+  if (!saved.product.trim() && !saved.qty) return;
+  showToast(`Removed ${saved.product.trim() || 'item'}`, { label: 'Undo', fn: () => {
+    const newId = addRow(saved.product, saved.qty, saved.weight);
+    const before = document.querySelectorAll('.job-card')[index];
+    const el = document.getElementById(`row-${newId}`);
+    if (before && el && before !== el) before.parentNode.insertBefore(el, before);
+    refreshAfterChange();
+  }});
+}
+
+function removeRowEl(id) {
+  document.getElementById(`row-${id}`)?.remove();
+  delete comboState[id];
+}
+
+function setRowError(id, msg) {
+  const el = document.getElementById(`err-${id}`);
+  if (el) el.textContent = msg ? '❌ ' + msg : '';
+}
+const clearRowError = id => setRowError(id, '');
+
+// Server messages are written for Telegram: Markdown marks, and a long list
+// of examples after the first paragraph. Keep the part that says what's wrong.
+function cleanServerError(e) {
+  return String(e || 'Failed').split('\n\n')[0].replace(/[*`]/g, '').replace(/^[⚠️❌\s]+/u, '').trim();
 }
 
 function cloneRow(id) {
@@ -1308,29 +2054,52 @@ function cloneRow(id) {
   refreshAfterChange();
 }
 
-function renderCombo(id, filter) {
+// `autoPick` (set while typing) highlights the best match when it starts with
+// what was typed, so "toor" + Enter picks TOOR DAL. A match found only in the
+// middle ("DAL" in TOOR DAL) is not picked: that is more likely a new name.
+function renderCombo(id, filter, autoPick) {
   const dd  = document.getElementById(`combo-dd-${id}`);
   if (!dd) return;
   const val = (document.getElementById(`prod-${id}`)?.value||'').toUpperCase().trim();
-  const filtered   = products.filter(p => p.name.toUpperCase().includes((filter||'').toUpperCase()));
+  const f   = (filter||'').toUpperCase().trim();
+  // Exact, then starts-with, then a word starting with it, then anywhere
+  const rank = n => n === f ? 0 : n.startsWith(f) ? 1 : n.split(/[\s.]+/).some(w => w.startsWith(f)) ? 2 : 3;
+  const filtered = products
+    .map((p, i) => ({ p, i, n: p.name.toUpperCase() }))
+    .filter(x => x.n.includes(f))
+    .sort((a, b) => rank(a.n) - rank(b.n) || a.i - b.i)
+    .map(x => x.p);
   const exactMatch = products.some(p => p.name.toUpperCase() === val);
   const hasNew     = !!(val && !exactMatch);
   const prev       = comboState[id] || { active: -1 };
   const optionCount = filtered.length + (hasNew ? 1 : 0);
   let active = prev.active;
+  if (autoPick) active = (f && filtered.length && filtered[0].name.toUpperCase().startsWith(f)) ? 0 : -1;
   if (active >= optionCount) active = optionCount - 1;
   comboState[id] = { items: filtered, hasNew, active, val };
 
   let html = filtered.map((p, i) => `
-    <div class="combo-option ${i===active?'active':''}" data-idx="${i}"
-      onmousedown="selectOption(${id},'${escJs(p.name)}',${parseFloat(p.weight)||''})">
-      <span>${p.name}</span><span class="combo-option-weight">${p.weight}</span>
+    <div class="combo-option ${i===active?'active':''}" data-idx="${i}" id="opt-${id}-${i}"
+      role="option" aria-selected="${i===active}" onmousedown="selectComboItem(${id},${i})">
+      <span>${escHtml(p.name)}${p.inherited ? '<span class="combo-option-tag">general</span>' : ''}</span>
+      <span class="combo-option-weight">${escHtml(p.weight)}</span>
     </div>`).join('');
   if (hasNew) {
     const newIdx = filtered.length;
-    html += `<div class="combo-new ${newIdx===active?'active':''}" data-idx="${newIdx}" onmousedown="addNewProduct(${id})">+ Add "${val}" to list</div>`;
+    html += `<div class="combo-new ${newIdx===active?'active':''}" data-idx="${newIdx}" id="opt-${id}-${newIdx}"
+      role="option" aria-selected="${newIdx===active}" onmousedown="addNewProduct(${id})">+ Add "${escHtml(val)}" to list</div>`;
   }
   dd.innerHTML = html || '<div class="combo-option" style="color:#aaa;pointer-events:none;">No products found</div>';
+  const input = document.getElementById(`prod-${id}`);
+  if (input) {
+    if (active >= 0) input.setAttribute('aria-activedescendant', `opt-${id}-${active}`);
+    else input.removeAttribute('aria-activedescendant');
+  }
+}
+
+function setComboOpen(id, open) {
+  document.getElementById(`combo-dd-${id}`)?.classList.toggle('open', open);
+  document.getElementById(`prod-${id}`)?.setAttribute('aria-expanded', String(open));
 }
 
 function currentFilter(id) {
@@ -1360,20 +2129,30 @@ function onComboKey(e, id) {
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     if (comboState[id]) {
-      comboState[id].active = Math.max(comboState[id].active - 1, 0);
+      // Up past the first option clears the highlight, so Enter keeps what was typed
+      comboState[id].active = Math.max(comboState[id].active - 1, -1);
       renderCombo(id, currentFilter(id));
       scrollActive(id);
     }
   } else if (e.key === 'Enter') {
+    if (e.ctrlKey || e.metaKey) return;   // Ctrl+Enter prints (global shortcut)
     if (open && st && st.active >= 0) {
       e.preventDefault();
       commitComboActive(id);
     } else {
       e.preventDefault();
+      setComboOpen(id, false);
       document.getElementById(`qty-${id}`)?.focus();
     }
+  } else if (e.key === 'Tab' && !e.shiftKey) {
+    // Tab accepts the highlighted product, like Enter (but never adds a new one)
+    if (open && st && st.active >= 0 && st.active < st.items.length) {
+      e.preventDefault();
+      selectComboItem(id, st.active);
+    }
   } else if (e.key === 'Escape') {
-    dd?.classList.remove('open');
+    if (open) e.stopPropagation();
+    setComboOpen(id, false);
   }
 }
 
@@ -1381,8 +2160,7 @@ function commitComboActive(id) {
   const st = comboState[id];
   if (!st) return;
   if (st.active < st.items.length) {
-    const p = st.items[st.active];
-    selectOption(id, p.name, parseFloat(p.weight) || '');
+    selectComboItem(id, st.active);
   } else if (st.hasNew) {
     addNewProduct(id);
   }
@@ -1390,43 +2168,86 @@ function commitComboActive(id) {
 
 function openCombo(id) {
   renderCombo(id, (document.getElementById(`prod-${id}`)?.value||'').toUpperCase());
-  document.getElementById(`combo-dd-${id}`)?.classList.add('open');
+  setComboOpen(id, true);
+}
+function onProductFocus(id) {
+  openCombo(id);
+  // On a phone, bring the row to the top once the keyboard has slid up, so
+  // the dropdown under it has room instead of opening behind the keyboard.
+  if (isTouch()) setTimeout(() => {
+    if (document.activeElement === document.getElementById(`prod-${id}`)) {
+      document.getElementById(`row-${id}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  }, 350);
 }
 function onComboBlur(id) {
-  setTimeout(() => document.getElementById(`combo-dd-${id}`)?.classList.remove('open'), 200);
+  setTimeout(() => setComboOpen(id, false), 200);
 }
-function onComboInput(id) {
+function onComboInput(id, e) {
   const v = document.getElementById(`prod-${id}`);
-  v.value = v.value.toUpperCase();
-  if (comboState[id]) comboState[id].active = -1;
-  renderCombo(id, v.value.trim());
-  document.getElementById(`combo-dd-${id}`)?.classList.add('open');
+  // Rewriting the value while a phone keyboard is still composing a word
+  // makes it repeat letters, so that waits for compositionend (which calls
+  // this again). Otherwise only rewrite when needed, keeping the caret put.
+  if (!e?.isComposing) {
+    const up = v.value.toUpperCase();
+    if (up !== v.value) {
+      const s = v.selectionStart, end = v.selectionEnd;
+      v.value = up;
+      try { v.setSelectionRange(s, end); } catch {}
+    }
+  }
+  renderCombo(id, v.value.trim(), true);
+  setComboOpen(id, true);
   onProductSelect(id);
+  clearRowError(id);
+  v.classList.remove('error');
   refreshAfterChange();
 }
-function selectOption(id, name, wNum) {
-  document.getElementById(`prod-${id}`).value = name;
-  if (wNum) { document.getElementById(`wt-${id}`).value = wNum; updateUOM(id); }
-  document.getElementById(`combo-dd-${id}`)?.classList.remove('open');
+function selectComboItem(id, idx) {
+  const p = comboState[id]?.items[idx];
+  if (!p) return;
+  document.getElementById(`prod-${id}`).value = p.name;
+  document.getElementById(`wt-${id}`).value   = weightForForm(p.weight);
+  updateUOM(id);
+  document.getElementById(`prod-${id}`).classList.remove('error');
+  document.getElementById(`wt-${id}`).classList.remove('error');
+  clearRowError(id);
+  setComboOpen(id, false);
   maybeAddTrailingRow(id);
   document.getElementById(`qty-${id}`)?.focus();
   refreshAfterChange();
 }
+
+// Bare number → "N kg" below 100, "N g" from 100 up; anything with a unit goes as typed.
+function normalizeWeightInput(raw) {
+  const s = String(raw || '').trim();
+  return /^\d+(\.\d+)?$/.test(s) ? (parseFloat(s) < 100 ? `${parseFloat(s)} kg` : `${parseFloat(s)} g`) : s;
+}
+
 async function addNewProduct(id) {
   const name = (document.getElementById(`prod-${id}`)?.value||'').trim().toUpperCase();
-  const qty  = document.getElementById(`qty-${id}`)?.value;
   if (!name) return;
-  if (!qty || qty < 1) { showToast('Fill quantity first'); return; }
-  const wtRaw = (document.getElementById(`wt-${id}`)?.value||'').trim();
-  const wtNum = parseFloat(wtRaw);
-  let weight  = !isNaN(wtNum) ? (wtNum<100?`${wtNum} kg`:`${wtNum} g`) : '500 g';
-  const hotel = document.getElementById('printHotel')?.value || 'general';
+  const wtEl  = document.getElementById(`wt-${id}`);
+  const wtRaw = (wtEl?.value||'').trim();
+  // No guessing: the weight is printed on every label as the net quantity.
+  if (isNaN(parseFloat(wtRaw))) {
+    setComboOpen(id, false);
+    wtEl?.classList.add('error');
+    wtEl?.focus();
+    showToast(`Enter the weight for ${name} first, then add it`);
+    return;
+  }
+  const weight = normalizeWeightInput(wtRaw);
+  const hotel  = document.getElementById('printHotel')?.value || 'general';
   try {
-    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
+    const res = await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
+    if (!res) return;
+    if (!res.ok) { const d = await res.json().catch(()=>({})); showToast(d.error || 'Failed to add product'); return; }
     await loadProducts();
-    document.getElementById(`wt-${id}`).value = parseFloat(weight);
+    wtEl.value = weightForForm(weight);
+    wtEl.classList.remove('error');
     updateUOM(id);
-    document.getElementById(`combo-dd-${id}`)?.classList.remove('open');
+    setComboOpen(id, false);
     maybeAddTrailingRow(id);
     refreshAfterChange();
     showToast(`✅ Added ${name} → ${weight}`);
@@ -1434,26 +2255,48 @@ async function addNewProduct(id) {
 }
 
 // ── Print ─────────────────────────────────────
+// Check one row. Returns its print line ("PROD,QTY[,WEIGHT]"), '' for an
+// empty row, or null after marking the row's problem in the form.
+function rowLine(id) {
+  const prodEl = document.getElementById(`prod-${id}`);
+  const qtyEl  = document.getElementById(`qty-${id}`);
+  const wtEl   = document.getElementById(`wt-${id}`);
+  const prod = (prodEl?.value||'').trim().toUpperCase();
+  const qty  = (qtyEl?.value||'').trim();
+  const wt   = (wtEl?.value||'').trim();
+  [prodEl, qtyEl, wtEl].forEach(el => el?.classList.remove('error'));
+  clearRowError(id);
+  if (!prod && !qty) return '';
+  if (!prod) { prodEl?.classList.add('error'); return null; }
+  const n = Number(qty);
+  if (!qty || !Number.isInteger(n) || n < 1 || n > 500) {
+    qtyEl?.classList.add('error');
+    setRowError(id, 'Quantity must be a whole number from 1 to 500.');
+    return null;
+  }
+  // A product that isn't in the list has no weight to fall back on
+  if (!wt && !productEntry(prod)) {
+    wtEl?.classList.add('error');
+    setRowError(id, `${prod} isn't in the product list — enter its weight.`);
+    return null;
+  }
+  return wt ? `${prod},${qty},${wt}` : `${prod},${qty}`;
+}
+
 async function submitPrint() {
+  checkDayRollover();
   const btn     = document.getElementById('printBtn');
   const content = document.getElementById('printBtnContent');
   const rows    = document.querySelectorAll('.job-card');
   const jobs    = [];
+  const jobRowIds = [];   // row id for each entry in jobs, to match results back
   let hasError  = false;
 
   rows.forEach(row => {
-    const id  = row.id.replace('row-','');
-    const prod = (document.getElementById(`prod-${id}`)?.value||'').trim().toUpperCase();
-    const qty  = (document.getElementById(`qty-${id}`)?.value||'').trim();
-    const wt   = (document.getElementById(`wt-${id}`)?.value||'').trim();
-    document.getElementById(`prod-${id}`)?.classList.remove('error');
-    document.getElementById(`qty-${id}`)?.classList.remove('error');
-    if (!prod && !qty) return;
-    if (!prod) { document.getElementById(`prod-${id}`)?.classList.add('error'); hasError=true; return; }
-    if (!qty||isNaN(qty)||qty<1) { document.getElementById(`qty-${id}`)?.classList.add('error'); hasError=true; return; }
-    let line = `${prod},${qty}`;
-    if (wt) line += `,${wt}`;
-    jobs.push({line});
+    const id   = row.id.replace('row-','');
+    const line = rowLine(id);
+    if (line === null) { hasError = true; return; }
+    if (line) { jobs.push({line}); jobRowIds.push(id); }
   });
 
   if (hasError) { showToast('Fix highlighted fields'); return; }
@@ -1473,31 +2316,56 @@ async function submitPrint() {
   }
 
   // Warn if the printer looks offline — jobs still queue, but flag it.
-  if (printerOnline === false) {
-    if (!confirm('⚠️ The printer appears to be offline.\n\nYour job will be queued and will print automatically once the printer is back online. Continue?')) return;
-  }
+  if (!await confirmPrinterReady()) return;
 
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
 
   const hotel = document.getElementById('printHotel')?.value || 'general';
   const packedOn   = formatDateForServer(document.getElementById('packedDate')?.value || '');
-  const bestBefore = formatDateForServer(document.getElementById('bestBeforeDate')?.value || '');
+  // Left blank while Use By follows the products: the server then works
+  // it out per item from each product's shelf life.
+  const bestBefore = useByAuto ? '' : formatDateForServer(document.getElementById('bestBeforeDate')?.value || '');
   try {
     const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs, hotel, packed_on: packedOn, best_before: bestBefore})});
     if (!res) return;
-    const data = await res.json();
-    showResults(data.results);
-    document.getElementById('jobRows').innerHTML='';
-    comboState = {};
-    rowId=0; addRow();
-    localStorage.removeItem(DRAFT_KEY);
-    hideDateNotice();
-    updateSummary();
-    // Auto-switch to queue tab so user can see their jobs
-    switchTab('queue');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(data.results)) { showToast(data.error || 'Could not queue the print'); return; }
+
+    const results = data.results;
+    const failed  = [];   // [rowId, error]
+    results.forEach((r, i) => { if (!r.success) failed.push([jobRowIds[i], r.error]); });
+    const queued  = results.length - failed.length;
+    showResults(results);
+    if (queued) pollQueue();
+
+    if (!failed.length) {
+      document.getElementById('jobRows').innerHTML='';
+      comboState = {};
+      rowId=0; addRow();
+      localStorage.removeItem(DRAFT_KEY);
+      hideDateNotice();
+      refreshUseBy();
+      updateSummary();
+      // Auto-switch to queue tab so user can see their jobs
+      switchTab('queue');
+      return;
+    }
+
+    // Some lines were refused. Keep exactly those in the form, each with its
+    // reason, and stay here: they used to be wiped along with the rest while
+    // the app jumped to the Queue tab, so the error was never seen.
+    const failedIds = new Set(failed.map(([id]) => String(id)));
+    jobRowIds.forEach(id => { if (!failedIds.has(String(id))) removeRowEl(id); });
+    failed.forEach(([id, err]) => {
+      document.getElementById(`prod-${id}`)?.classList.add('error');
+      setRowError(id, cleanServerError(err));
+    });
+    ensureTrailingRow();
+    refreshAfterChange();
+    showToast(queued ? `✅ ${queued} queued · ❌ ${failed.length} need fixing` : '❌ Nothing queued — fix the items marked in red');
   } catch { showToast('❌ Cannot reach server'); }
-  finally { btn.disabled=false; content.innerHTML='🖨️ PRINT LABELS'; }
+  finally { content.innerHTML='🖨️ PRINT LABELS'; updateSummary(); }
 }
 
 function showResults(results) {
@@ -1510,14 +2378,14 @@ function showResults(results) {
       d.innerHTML = `
         <div class="result-icon">✅</div>
         <div>
-          <div class="result-product">${r.product} × ${r.quantity}</div>
+          <div class="result-product">${escHtml(r.product)} × ${escHtml(r.quantity)} — queued</div>
           <div class="result-detail">
-            ${r.weight} · Packed: ${r.packed_on} · Use By: ${r.best_before}<br>
-            Batch: <span class="result-batch">${r.batch_no}</span>
+            ${escHtml(r.weight)} · Packed: ${escHtml(r.packed_on)} · Use By: ${escHtml(r.best_before)}<br>
+            Batch: <span class="result-batch">${escHtml(r.batch_no)}</span>
           </div>
         </div>`;
     } else {
-      d.innerHTML = `<div class="result-icon">❌</div><div><div class="result-product">${r.line}</div><div class="result-detail" style="color:var(--red)">${r.error||'Failed'}</div></div>`;
+      d.innerHTML = `<div class="result-icon">❌</div><div><div class="result-product">${escHtml(r.line)}</div><div class="result-detail" style="color:var(--red)">${escHtml(cleanServerError(r.error))}</div></div>`;
     }
     c.appendChild(d);
   });
@@ -1525,14 +2393,17 @@ function showResults(results) {
 }
 
 function resetAll() {
+  const before = captureFormState();
+  const hadItems = before.rows.some(r => (r.product||'').trim() || r.qty);
   document.getElementById('jobRows').innerHTML='';
   document.getElementById('results').innerHTML='';
   comboState = {};
   rowId=0; addRow();
   localStorage.removeItem(DRAFT_KEY);
   hideDateNotice();
+  refreshUseBy();
   updateSummary();
-  showToast('Cleared');
+  showToast('Cleared', hadItems ? { label: 'Undo', fn: () => { applyFormState(before); saveDraft(); showToast('Restored'); } } : null);
 }
 
 // ── Auto-add / trailing row ──────────────────
@@ -1555,12 +2426,40 @@ function ensureTrailingRow() {
 }
 
 // ── Quantity helpers ─────────────────────────
-function onQtyInput(id)   { refreshAfterChange(); }
-function onWeightInput(id) { updateUOM(id); refreshAfterChange(); }
+function onQtyInput(id) {
+  document.getElementById(`qty-${id}`)?.classList.remove('error');
+  clearRowError(id);
+  refreshAfterChange();
+}
+function onWeightInput(id) {
+  document.getElementById(`wt-${id}`)?.classList.remove('error');
+  clearRowError(id);
+  updateUOM(id);
+  refreshAfterChange();
+}
 
 function onQtyKey(e, id) {
-  if (e.key !== 'Enter') return;
+  if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return;
   e.preventDefault();
+  // A product that isn't in the list needs its weight, so stop there first
+  // rather than finding out at print time.
+  const prod = document.getElementById(`prod-${id}`)?.value || '';
+  const wtEl = document.getElementById(`wt-${id}`);
+  if (prod.trim() && !productEntry(prod) && !(wtEl?.value || '').trim()) {
+    wtEl?.focus();
+    return;
+  }
+  focusNextRow(id);
+}
+
+function onWeightKey(e, id) {
+  if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return;
+  e.preventDefault();
+  focusNextRow(id);
+}
+
+// Move to the next item's product box, adding an item when this is the last.
+function focusNextRow(id) {
   const rows = Array.from(document.querySelectorAll('.job-card'));
   const idx  = rows.findIndex(r => r.id === `row-${id}`);
   let next   = rows[idx + 1];
@@ -1568,6 +2467,18 @@ function onQtyKey(e, id) {
   const nid2 = next.id.replace('row-','');
   document.getElementById(`prod-${nid2}`)?.focus();
   refreshAfterChange();
+}
+
+// Alt+N: the empty item at the bottom, or a new one.
+function focusNewItem() {
+  const rows = Array.from(document.querySelectorAll('.job-card'));
+  const last = rows[rows.length - 1];
+  const lastId = last?.id.replace('row-','');
+  const empty = last && !(document.getElementById(`prod-${lastId}`)?.value || '').trim();
+  const id = empty ? lastId : addRow();
+  const el = document.getElementById(`prod-${id}`);
+  el?.focus();
+  el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
 function bumpQty(id, n) {
@@ -1616,34 +2527,63 @@ function updateSummary() {
       el.innerHTML = txt;
     }
   }
-  if (btn) btn.disabled = items === 0;
+  if (btn && !btn.querySelector('.spinner')) btn.disabled = items === 0 || !navigator.onLine;
 }
 
 function refreshAfterChange() {
   updateSummary();
+  refreshUseBy();
   saveDraft();
 }
 
 // ── Draft persistence ────────────────────────
-function saveDraft() {
-  try {
-    const rows = [];
-    document.querySelectorAll('.job-card').forEach(row => {
-      const id = row.id.replace('row-','');
-      rows.push({
-        product: document.getElementById(`prod-${id}`)?.value || '',
-        qty:     document.getElementById(`qty-${id}`)?.value || '',
-        weight:  document.getElementById(`wt-${id}`)?.value || '',
-      });
+function captureFormState() {
+  const rows = [];
+  document.querySelectorAll('.job-card').forEach(row => {
+    const id = row.id.replace('row-','');
+    rows.push({
+      product: document.getElementById(`prod-${id}`)?.value || '',
+      qty:     document.getElementById(`qty-${id}`)?.value || '',
+      weight:  document.getElementById(`wt-${id}`)?.value || '',
     });
-    const draft = {
-      rows,
-      hotel:  document.getElementById('printHotel')?.value || 'general',
-      packed: document.getElementById('packedDate')?.value || '',
-      bb:     document.getElementById('bestBeforeDate')?.value || '',
-    };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  } catch {}
+  });
+  return {
+    rows,
+    hotel:  document.getElementById('printHotel')?.value || 'general',
+    packed: document.getElementById('packedDate')?.value || '',
+    bb:     document.getElementById('bestBeforeDate')?.value || '',
+    useByAuto,
+    packedCustom,
+    day:    todayStr(),   // dates are only trusted back on the day they were set
+  };
+}
+
+// Rebuild the product form from captureFormState() output. Dates come back
+// only if they were saved today; otherwise the form keeps today's defaults.
+function applyFormState(st) {
+  const printSel = document.getElementById('printHotel');
+  if (printSel && st.hotel && hotels.includes(st.hotel)) {
+    printSel.value = st.hotel;
+    products = productsForHotel(st.hotel);
+  }
+  document.getElementById('jobRows').innerHTML = '';
+  comboState = {};
+  rowId = 0;
+  (st.rows || []).forEach(r => addRow(r.product||'', r.qty||'', r.weight||''));
+  ensureTrailingRow();
+
+  setDefaultDates();
+  if (st.day === todayStr()) {
+    if (st.packed) document.getElementById('packedDate').value = st.packed;
+    packedCustom = !!st.packedCustom;
+    useByAuto    = st.useByAuto !== false || !st.bb;
+    if (!useByAuto) document.getElementById('bestBeforeDate').value = st.bb;
+  }
+  refreshAfterChange();
+}
+
+function saveDraft() {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(captureFormState())); } catch {}
 }
 
 function readDraft() {
@@ -1654,29 +2594,25 @@ function readDraft() {
 }
 
 function restoreDraftOrDefault() {
-  setDefaultDates();
   const draft = readDraft();
   const hasContent = draft && Array.isArray(draft.rows) && draft.rows.some(r => (r.product||'').trim());
 
-  if (hasContent) {
-    const printSel = document.getElementById('printHotel');
-    if (printSel && draft.hotel && hotels.includes(draft.hotel)) {
-      printSel.value = draft.hotel;
-      onPrintHotelChange();
-    }
-    if (draft.packed) document.getElementById('packedDate').value = draft.packed;
-    if (draft.bb)     document.getElementById('bestBeforeDate').value = draft.bb;
-
+  if (!hasContent) {
     document.getElementById('jobRows').innerHTML = '';
     comboState = {};
     rowId = 0;
-    draft.rows.forEach(r => addRow(r.product||'', r.qty||'', r.weight||''));
-    ensureTrailingRow();
-    showToast('Restored your last items');
-  } else {
     addRow();
+    setDefaultDates();
+    refreshAfterChange();
+    return;
   }
-  refreshAfterChange();
+  applyFormState(draft);
+  // Older drafts have no `day`; a draft whose Packed date isn't today is from
+  // an earlier session, and its dates were just replaced with today's.
+  if (draft.day !== todayStr() && draft.packed && draft.packed !== todayStr()) {
+    showDateNotice('📅 Items restored from an earlier session — the dates were reset to today. Check them before printing.');
+  }
+  showToast('Restored your last items');
 }
 
 // ── Roll hint ────────────────────────────────
@@ -1702,7 +2638,7 @@ function populateHotelDropdowns() {
 
   const opts = hotels.map(h => {
     const label = h.charAt(0).toUpperCase() + h.slice(1);
-    return `<option value="${h}">${label}</option>`;
+    return `<option value="${escHtml(h)}">${escHtml(label)}</option>`;
   }).join('');
 
   if (printSel) {
@@ -1737,14 +2673,25 @@ async function loadProducts() {
   populateHotelDropdowns();
 
   // Set products for print combo dropdown based on selected print hotel
-  const printHotel = getSelectedPrintHotel();
-  products = allByHotel[printHotel] || [];
+  products = productsForHotel(getSelectedPrintHotel());
   renderProducts();
+  refreshUseBy();
+}
+
+// A hotel's own products plus every General product it doesn't override —
+// the same fallback the server uses when it looks a product up.
+function productsForHotel(hotel) {
+  const own = allByHotel[hotel] || [];
+  if (hotel === 'general') return own;
+  const mine = new Set(own.map(p => p.name.toUpperCase()));
+  const inherited = (allByHotel.general || [])
+    .filter(p => !mine.has(p.name.toUpperCase()))
+    .map(p => ({ ...p, inherited: true }));
+  return own.concat(inherited);
 }
 
 function onPrintHotelChange() {
-  const hotel = getSelectedPrintHotel();
-  products = allByHotel[hotel] || [];
+  products = productsForHotel(getSelectedPrintHotel());
   // Re-render all open combo dropdowns
   document.querySelectorAll('.job-card').forEach(row => {
     const id = row.id.replace('row-','');
@@ -1757,59 +2704,92 @@ function onProductsHotelChange() {
   renderProducts();
 }
 
+async function postJson(path, body) {
+  // → {ok, data}, or null when the session expired (the login screen is already up)
+  const res = await apiFetch(`${API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res) return null;
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
+let shownProducts = [];   // the list rendered on the Products tab, indexed by row
+
+function shelfText(p) {
+  return p.shelf_months ? `${p.shelf_months}-month shelf life` : `${DEFAULT_SHELF_MONTHS}-month shelf life (default)`;
+}
+
 function renderProducts() {
   const list = document.getElementById('productList');
   if (!list) return;
   const hotel = getSelectedProductsHotel();
-  const hotelProducts = allByHotel[hotel] || [];
-  list.innerHTML = hotelProducts.length ? hotelProducts.map((p,i)=>`
+  shownProducts = allByHotel[hotel] || [];
+  const note = document.getElementById('productsHotelNote');
+  if (note) note.textContent = hotel === 'general' ? '' : `Products not listed here use their General entry when printing for ${hotel}.`;
+  list.innerHTML = shownProducts.length ? shownProducts.map((p,i)=>`
     <div class="product-item" id="pitem-${i}">
       <div>
-        <div class="product-item-name">${p.name}</div>
-        <div class="product-item-weight">${p.weight}</div>
+        <div class="product-item-name">${escHtml(p.name)}</div>
+        <div class="product-item-weight">${escHtml(p.weight)} · ${shelfText(p)}</div>
       </div>
       <div class="product-item-actions">
-        <button class="product-item-edit" onclick="editProduct(${i},'${p.name.replace(/'/g,"\\'")}','${p.weight.replace(/'/g,"\\'")}')">✎</button>
-        <button class="product-item-remove" onclick="removeProduct('${p.name.replace(/'/g,"\\'")}')">×</button>
+        <button class="product-item-edit" onclick="editProduct(${i})" aria-label="Edit ${escHtml(p.name)}">✎</button>
+        <button class="product-item-remove" onclick="removeProduct(${i})" aria-label="Remove ${escHtml(p.name)}">×</button>
       </div>
     </div>`).join('') : '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">No products in this hotel.</div>';
 }
 
-function editProduct(idx, name, weight) {
+function editProduct(idx) {
   const el = document.getElementById(`pitem-${idx}`);
-  if (!el) return;
-  // Parse numeric part from weight for the input
-  const wNum = parseFloat(weight) || '';
+  const p  = shownProducts[idx];
+  if (!el || !p) return;
   el.className = 'product-edit-row';
   el.innerHTML = `
-    <input type="text" id="pedit-name-${idx}" value="${name}" style="text-transform:uppercase; flex:2;"/>
-    <input type="text" id="pedit-wt-${idx}" value="${wNum}" style="max-width:70px;"/>
-    <button class="btn-small" onclick="saveProduct(${idx},'${name.replace(/'/g,"\\'")}')">Save</button>
-    <button class="product-edit-cancel" onclick="renderProducts()">✕</button>
+    <input type="text" id="pedit-name-${idx}" value="${escHtml(p.name)}" aria-label="Product name" style="text-transform:uppercase; flex:2;"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="done"
+      onkeydown="onProductEditKey(event, ${idx})"/>
+    <input type="text" id="pedit-wt-${idx}" value="${escHtml(weightForForm(p.weight))}" aria-label="Weight" style="max-width:70px;"
+      autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="done" onkeydown="onProductEditKey(event, ${idx})"/>
+    <input type="number" id="pedit-shelf-${idx}" value="${p.shelf_months || ''}" placeholder="mo" min="1" max="60"
+      inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" onkeydown="onProductEditKey(event, ${idx})"
+      aria-label="Shelf life in months (blank for ${DEFAULT_SHELF_MONTHS})" style="max-width:62px;"/>
+    <button class="btn-small" onclick="saveProduct(${idx})">Save</button>
+    <button class="product-edit-cancel" onclick="renderProducts()" aria-label="Cancel edit">✕</button>
   `;
   document.getElementById(`pedit-name-${idx}`)?.focus();
 }
 
-async function saveProduct(idx, oldName) {
+function onProductEditKey(e, idx) {
+  if (e.key === 'Enter') { e.preventDefault(); saveProduct(idx); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renderProducts(); }
+}
+
+function readShelfInput(el) {
+  // → months, '' for "use the default", or null (and a toast) when invalid
+  const v = (el?.value || '').trim();
+  if (!v) return '';
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 60) { el.classList.add('error'); showToast('Shelf life must be 1–60 months'); return null; }
+  el.classList.remove('error');
+  return n;
+}
+
+async function saveProduct(idx) {
+  const p         = shownProducts[idx];
   const newName   = (document.getElementById(`pedit-name-${idx}`)?.value || '').trim().toUpperCase();
   const newWtRaw  = (document.getElementById(`pedit-wt-${idx}`)?.value || '').trim();
+  const shelf     = readShelfInput(document.getElementById(`pedit-shelf-${idx}`));
   const hotel     = getSelectedProductsHotel();
-
+  if (!p) return;
   if (!newName || !newWtRaw) { showToast('Enter name and weight'); return; }
-
-  // Auto-UOM
-  const wtNum = parseFloat(newWtRaw);
-  let newWeight = newWtRaw.toUpperCase();
-  if (!isNaN(wtNum) && !newWtRaw.match(/[a-zA-Z]/)) {
-    newWeight = wtNum < 100 ? `${wtNum} kg` : `${wtNum} g`;
-  }
+  if (shelf === null) return;
 
   try {
-    // If name changed, remove old then add new
-    if (newName !== oldName) {
-      await apiFetch(`${API}/products/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:oldName,hotel})});
-    }
-    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:newName,weight:newWeight,hotel})});
+    // One request: the server renames, reweighs and sets shelf life in a single write
+    const r = await postJson('/products/update', {
+      old_product: p.name, product: newName, weight: normalizeWeightInput(newWtRaw), shelf_months: shelf, hotel,
+    });
+    if (!r) return;
+    if (!r.ok) { showToast(r.data.error || 'Failed to update'); return; }
     await loadProducts();
     showToast(`✅ Updated ${newName}`);
   } catch { showToast('Failed to update'); }
@@ -1817,24 +2797,52 @@ async function saveProduct(idx, oldName) {
 
 async function addProductHandler() {
   const name   = document.getElementById('newProduct').value.trim().toUpperCase();
-  const weight = document.getElementById('newWeight').value.trim().toUpperCase();
+  const weight = normalizeWeightInput(document.getElementById('newWeight').value);
+  const shelfEl = document.getElementById('newShelf');
+  const shelf  = readShelfInput(shelfEl);
   const hotel  = getSelectedProductsHotel();
   if (!name||!weight) { showToast('Enter name and weight'); return; }
+  if (shelf === null) return;
   try {
-    await apiFetch(`${API}/products/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,weight,hotel})});
+    // Left out when blank, so re-adding an existing product keeps its shelf life
+    const body = { product: name, weight, hotel };
+    if (shelf !== '') body.shelf_months = shelf;
+    const r = await postJson('/products/add', body);
+    if (!r) return;
+    if (!r.ok) { showToast(r.data.error || 'Failed'); return; }
     document.getElementById('newProduct').value='';
     document.getElementById('newWeight').value='';
+    shelfEl.value='';
     await loadProducts(); showToast(`✅ Added ${name}`);
   } catch { showToast('Failed'); }
 }
 
-async function removeProduct(name) {
+async function removeProduct(idx) {
+  const p = shownProducts[idx];
   const hotel = getSelectedProductsHotel();
-  if (!confirm(`Remove ${name} from [${hotel}]?`)) return;
+  if (!p || !confirm(`Remove ${p.name} from [${hotel}]?`)) return;
   try {
-    await apiFetch(`${API}/products/remove`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:name,hotel})});
-    await loadProducts(); showToast(`Removed ${name}`);
+    const r = await postJson('/products/remove', { product: p.name, hotel });
+    if (!r) return;
+    await loadProducts(); showToast(`Removed ${p.name}`);
   } catch { showToast('Failed'); }
+}
+
+async function addHotelHandler() {
+  const raw = prompt('New hotel name\n(one word: letters, numbers, - or _)');
+  if (raw === null) return;
+  const name = raw.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,29}$/.test(name)) { showToast('Use one word: letters, numbers, - or _'); return; }
+  try {
+    const r = await postJson('/hotels/add', { hotel: name });
+    if (!r) return;
+    if (!r.ok) { showToast(r.data.error || 'Could not add hotel'); return; }
+    await loadProducts();
+    document.getElementById('productsHotel').value = name;
+    renderProducts();
+    showToast(`✅ Added hotel ${name} — now add its products`);
+    document.getElementById('newProduct')?.focus();
+  } catch { showToast('Could not add hotel'); }
 }
 
 // ── Logs ─────────────────────────────────────
@@ -1844,17 +2852,53 @@ let visibleLogIds = [];        // ids currently rendered, in list order (newest 
 
 const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-async function loadLogs() {
+const LOG_PAGE = 100;
+let logsOffset    = 0;   // rows already shown, for "Load more"
+let logsReqSeq    = 0;   // drops a response that a newer filter has overtaken
+let logFilterTimer = null;
+
+function onLogFilterInput() {
+  // Wait for a pause in typing instead of one request per keystroke
+  clearTimeout(logFilterTimer);
+  logFilterTimer = setTimeout(() => loadLogs(), 300);
+}
+
+function logDateRange(v) {
+  // → {from, to} as local YYYY-MM-DD (both inclusive), or {} for all dates
+  const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return formatDateInput(d); };
+  if (v === 'today')     return { from: day(0), to: day(0) };
+  if (v === 'yesterday') return { from: day(1), to: day(1) };
+  if (v === '7')         return { from: day(6), to: day(0) };
+  if (v === '30')        return { from: day(29), to: day(0) };
+  return {};
+}
+
+function fmtLogTime(ts) {
+  // print_logs stores UTC ("YYYY-MM-DD HH:MM:SS"); show it in the viewer's local time
+  const d = new Date(String(ts || '').replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return String(ts || '').substring(0, 16);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function loadLogs(append = false) {
+  const seq     = ++logsReqSeq;
   const c       = document.getElementById('logsContainer');
+  const more    = document.getElementById('logsMore');
   const product = (document.getElementById('logFilterProduct')?.value||'').trim();
   const user    = (document.getElementById('logFilterUser')?.value||'').trim();
-  let url       = `${API}/logs?limit=100`;
-  if (product) url += `&product=${encodeURIComponent(product)}`;
-  if (user)    url += `&user=${encodeURIComponent(user)}`;
+  const range   = logDateRange(document.getElementById('logFilterDate')?.value);
+  const offset  = append ? logsOffset : 0;
+  let url       = `${API}/logs?limit=${LOG_PAGE}&offset=${offset}`;
+  if (product)    url += `&product=${encodeURIComponent(product)}`;
+  if (user)       url += `&user=${encodeURIComponent(user)}`;
+  if (range.from) url += `&from=${range.from}&to=${range.to}`;
+  if (append && more) { more.disabled = true; more.textContent = 'Loading…'; }
   try {
     const res  = await apiFetch(url);
     if (!res) return;
     const data = await res.json();
+    if (seq !== logsReqSeq) return;
     const sel  = document.getElementById('logFilterUser');
     if (data.is_admin && sel) {
       sel.style.display = 'block';
@@ -1862,21 +2906,27 @@ async function loadLogs() {
       sel.innerHTML = '<option value="">All users</option>' +
         data.usernames.map(u=>`<option value="${escHtml(u)}" ${u===cur?'selected':''}>${escHtml(u)}</option>`).join('');
     }
-    document.getElementById('logsCount').textContent = `${data.logs.length} record${data.logs.length!==1?'s':''}`;
 
     // Remember rows for reprint: anything still selected plus everything now shown.
     const keep = {};
     selectedLogs.forEach(id => { if (logsById[id]) keep[id] = logsById[id]; });
+    if (append) Object.assign(keep, logsById);
     data.logs.forEach(l => { keep[l.id] = l; });
     logsById      = keep;
-    visibleLogIds = data.logs.map(l => l.id);
+    visibleLogIds = (append ? visibleLogIds : []).concat(data.logs.map(l => l.id));
+    logsOffset    = offset + data.logs.length;
 
-    if (!data.logs.length) {
-      c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">No history yet.</div>';
+    const shown = visibleLogIds.length;
+    document.getElementById('logsCount').textContent =
+      `${shown}${data.has_more ? '+' : ''} record${shown!==1?'s':''}`;
+    if (more) { more.hidden = !data.has_more; more.disabled = false; more.textContent = 'Load more'; }
+
+    if (!shown) {
+      c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">No history for these filters.</div>';
       syncLogSelectionUI();
       return;
     }
-    c.innerHTML = data.logs.map(l=>{
+    const html = data.logs.map(l=>{
       const on = selectedLogs.has(l.id);
       return `
       <div class="log-entry ${on?'selected':''}" id="log-${l.id}" onclick="toggleLogSelect(${l.id})">
@@ -1894,14 +2944,19 @@ async function loadLogs() {
         <div class="log-meta">
           <span class="badge badge-${escHtml(l.source)}">${escHtml(l.source)}</span>
           ${data.is_admin ? `<span class="badge badge-user">${escHtml(l.username)}</span>` : ''}
-          · ${escHtml((l.timestamp||'').substring(0,16).replace('T',' '))}
+          · ${escHtml(fmtLogTime(l.timestamp))}
           · Batch: <span class="log-batch">${escHtml(l.batch_no)}</span><br>
           Packed: ${escHtml(l.packed_on)} · Use By: ${escHtml(l.best_before)}
         </div>
       </div>`;
     }).join('');
+    if (append) c.insertAdjacentHTML('beforeend', html); else c.innerHTML = html;
     syncLogSelectionUI();
-  } catch { c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">Failed to load.</div>'; }
+  } catch {
+    if (seq !== logsReqSeq) return;
+    if (append) { if (more) { more.disabled = false; more.textContent = 'Load more'; } showToast('Failed to load more'); }
+    else c.innerHTML='<div style="text-align:center;color:var(--muted);padding:2rem;">Failed to load.</div>';
+  }
 }
 
 // ── History selection ────────────────────────
@@ -1975,109 +3030,175 @@ function syncLogSelectionUI() {
 }
 
 // ── Queue ─────────────────────────────────────
-let queueRefreshTimer = null;
+// One poller serves every tab: it keeps the Queue badge, the printer pill and
+// (when open) the Queue tab current. It only runs while jobs are waiting or
+// printing — the only time a job can fail — because every poll is a request
+// through the ngrok tunnel. Idle, it refreshes on app focus and tab switches.
+let queueJobs      = null;       // last /api/queue jobs; null until the first load
+let queuePollTimer = null;
+let queuePollSeq   = 0;
+let queueLoadFailed = false;
+const seenFailed   = new Set();  // failed job ids already announced
+const RECENT_SHOWN = 5;
 
-async function loadQueue() {
-  const c = document.getElementById('queueContainer');
+const isQueueTab = () => document.getElementById('tab-queue')?.classList.contains('active');
+
+async function pollQueue() {
+  const seq = ++queuePollSeq;
+  clearTimeout(queuePollTimer);
+  queuePollTimer = null;
+  let data;
   try {
     const res = await apiFetch(`${API}/queue`);
     if (!res) return;
-    const data = await res.json();
-    const jobs = data.jobs || [];
-
-    // Failed jobs are shown alongside active ones. The queue records
-    // status "failed" and an error message, and both used to be filtered
-    // out here — so a printer fault looked identical to a finished shift.
-    const active = jobs.filter(j => j.status === 'queued' || j.status === 'printing');
-    const failed = jobs.filter(j => j.status === 'failed');
-    document.getElementById('queueCount').textContent =
-      `${active.length} active job${active.length !== 1 ? 's' : ''}` +
-      (failed.length ? ` · ${failed.length} failed` : '');
-
-    if (!active.length && !failed.length) {
-      c.innerHTML = '<div class="queue-empty">📭 Queue is empty — all jobs processed.</div>';
-      stopQueueRefresh();
-      return;
-    }
-
-    // Failures first: they need attention, the active ones are just waiting.
-    c.innerHTML = failed.concat(active).map(j => {
-      const isFailed   = j.status === 'failed';
-      const isPrinting = j.status === 'printing';
-      const icon = isFailed ? '❌' : (isPrinting ? '🔄' : '⏳');
-      const cls  = isFailed ? 'failed' : (isPrinting ? 'printing' : 'queued');
-      const canCancel = !isPrinting && !isFailed;
-      return `
-        <div class="queue-item ${cls}">
-          <div class="queue-status">${icon}</div>
-          <div class="queue-info">
-            <div class="queue-product">${escHtml(j.product)} × ${j.quantity}</div>
-            <div class="queue-detail">
-              ${j.weight ? escHtml(j.weight) + ' · ' : ''}${escHtml(j.status)}${j.batch_no ? ' · Batch: ' + escHtml(j.batch_no) : ''} · ${escHtml(j.created_at)}
-              ${j.source === 'telegram' ? ' · <span class="badge badge-telegram">telegram</span>' : ''}
-            </div>
-            ${isFailed ? `<div class="queue-error">${escHtml(j.error || 'Printer error')} — nothing was printed for this job.</div>` : ''}
-          </div>
-          <button class="queue-cancel" onclick="cancelQueueJob('${j.id}')" ${canCancel ? '' : 'disabled'} title="${isFailed ? 'Failed' : (isPrinting ? 'Currently printing' : 'Cancel')}">✕</button>
-        </div>`;
-    }).join('');
-
-    // Auto-refresh while queue has active jobs
-    if (active.length) startQueueRefresh(); else stopQueueRefresh();
+    if (!res.ok) throw new Error();
+    data = await res.json();
   } catch {
-    c.innerHTML = '<div class="queue-empty">⚠️ Failed to load queue.</div>';
+    if (seq !== queuePollSeq) return;
+    queueLoadFailed = true;
+    if (isQueueTab()) renderQueue();
+    return;
+  }
+  if (seq !== queuePollSeq) return;   // a newer poll already started
+
+  const firstLoad = queueJobs === null;
+  queueJobs = data.jobs || [];
+  queueLoadFailed = false;
+  if (data.printer) applyPrinterStatus(data.printer.online, data.printer.status);
+
+  const active = queueJobs.filter(j => j.status === 'queued' || j.status === 'printing');
+  const failed = queueJobs.filter(j => j.status === 'failed');
+  announceFailures(failed, firstLoad);
+  updateQueueBadge(active.length, failed.length);
+  if (isQueueTab()) renderQueue();
+
+  // Keeps going in the background (slower; browsers throttle it anyway) so a
+  // failure can still raise a notification while another window is in front.
+  if (active.length) {
+    queuePollTimer = setTimeout(pollQueue, document.visibilityState === 'visible' ? 2500 : 10000);
   }
 }
 
-function startQueueRefresh() {
-  if (queueRefreshTimer) return;
-  queueRefreshTimer = setInterval(() => {
-    // Only refresh if queue tab is active
-    if (document.getElementById('tab-queue')?.classList.contains('active')) {
-      loadQueue();
-    } else {
-      stopQueueRefresh();
-    }
-  }, 2000);
+// A failure used to show only on the Queue tab, so an operator on the Print
+// tab never learnt the printer had run out of labels.
+function announceFailures(failed, firstLoad) {
+  const fresh = failed.filter(j => !seenFailed.has(j.id));
+  fresh.forEach(j => seenFailed.add(j.id));
+  if (firstLoad || !fresh.length) return;
+  const what = fresh.length === 1 ? `${fresh[0].product} failed to print` : `${fresh.length} jobs failed to print`;
+  alertFailure(`${what}. ${fresh[0].error || 'Printer error'}.`);
+  if (isQueueTab()) return;
+  showToast(`❌ ${what}`, { label: 'View', fn: () => switchTab('queue') });
 }
 
-function stopQueueRefresh() {
-  if (queueRefreshTimer) {
-    clearInterval(queueRefreshTimer);
-    queueRefreshTimer = null;
+function updateQueueBadge(active, failed) {
+  const b = document.getElementById('queueBadge');
+  if (!b) return;
+  b.hidden = !active && !failed;
+  b.classList.toggle('fail', failed > 0);
+  b.textContent = failed ? failed : active;
+  const label = failed ? `${failed} failed job${failed !== 1 ? 's' : ''}` : `${active} job${active !== 1 ? 's' : ''} in the queue`;
+  b.setAttribute('aria-label', label);
+  b.title = label;
+}
+
+function queueRowHtml(j) {
+  const s = j.status;
+  const icon = { failed: '❌', printing: '🔄', queued: '⏳', done: '✅', cancelled: '🚫' }[s] || '•';
+  const when = (s === 'done' || s === 'cancelled') && j.finished_at ? `${s} ${j.finished_at}` : `${s} · ${j.created_at}`;
+  let actions = '';
+  if (s === 'failed') {
+    actions = `<div class="queue-actions">
+      <button type="button" class="queue-btn retry" onclick="retryJob('${escHtml(j.id)}')" aria-label="Retry ${escHtml(j.product)}">↻ Retry</button>
+      <button type="button" class="queue-btn" onclick="dismissJob('${escHtml(j.id)}')" aria-label="Dismiss ${escHtml(j.product)} without printing">Dismiss</button>
+    </div>`;
+  } else if (s === 'queued' || s === 'printing') {
+    actions = `<button class="queue-cancel" onclick="cancelQueueJob('${escHtml(j.id)}')" ${s === 'queued' ? '' : 'disabled'}
+      title="${s === 'printing' ? 'Currently printing' : 'Cancel'}" aria-label="Cancel ${escHtml(j.product)}">✕</button>`;
   }
+  return `
+    <div class="queue-item ${escHtml(s)}">
+      <div class="queue-status">${icon}</div>
+      <div class="queue-info">
+        <div class="queue-product">${escHtml(j.product)} × ${escHtml(j.quantity)}${j.test ? ' <span class="badge badge-ui">test</span>' : ''}</div>
+        <div class="queue-detail">
+          ${j.weight ? escHtml(j.weight) + ' · ' : ''}${escHtml(when)}${j.batch_no ? ' · Batch: ' + escHtml(j.batch_no) : ''}
+          ${j.source === 'telegram' ? ' · <span class="badge badge-telegram">telegram</span>' : ''}
+        </div>
+        ${s === 'failed' ? `<div class="queue-error">${escHtml(j.error || 'Printer error')} — nothing was printed for this job. Fix the printer, then Retry.</div>` : ''}
+      </div>
+      ${actions}
+    </div>`;
 }
 
-async function cancelQueueJob(jobId) {
+function renderQueue() {
+  const c = document.getElementById('queueContainer');
+  if (!c) return;
+  if (queueJobs === null) {
+    c.innerHTML = `<div class="queue-empty">${queueLoadFailed ? '⚠️ Failed to load queue.' : 'Loading...'}</div>`;
+    return;
+  }
+  const active = queueJobs.filter(j => j.status === 'queued' || j.status === 'printing');
+  const failed = queueJobs.filter(j => j.status === 'failed');
+  // Finished jobs used to vanish, so a job that printed and one that was
+  // cancelled looked the same. Show the latest few.
+  const recent = queueJobs.filter(j => j.status === 'done' || j.status === 'cancelled')
+                          .sort((a, b) => (b.finished_ts || 0) - (a.finished_ts || 0))
+                          .slice(0, RECENT_SHOWN);
+
+  document.getElementById('queueCount').textContent =
+    `${active.length} active job${active.length !== 1 ? 's' : ''}` +
+    (failed.length ? ` · ${failed.length} failed` : '');
+  document.getElementById('cancelAllBtn').disabled = !active.some(j => j.status === 'queued');
+
+  let html = '';
+  if (queueLoadFailed) html += '<div class="queue-empty">⚠️ Could not refresh — showing the last known queue.</div>';
+  if (failed.length) {
+    html += `<div class="failed-bar" role="alert">
+      <span class="failed-bar-text">${failed.length} job${failed.length !== 1 ? 's' : ''} failed</span>
+      <button type="button" class="queue-btn retry" onclick="retryJob()">↻ Retry all</button>
+      <button type="button" class="queue-btn" onclick="dismissJob()">Clear</button>
+    </div>`;
+  }
+  // Failures first: they need attention, the active ones are just waiting.
+  html += failed.concat(active).map(queueRowHtml).join('');
+  if (!active.length && !failed.length) html += '<div class="queue-empty">📭 Queue is empty — all jobs processed.</div>';
+  if (recent.length) {
+    html += '<div class="queue-subtitle">Recently finished</div>' + recent.map(queueRowHtml).join('');
+  }
+  c.innerHTML = html;
+}
+
+async function queueAction(path, body, okMsg, failMsg) {
   try {
-    const res = await apiFetch(`${API}/queue/cancel`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({job_id: jobId})
-    });
-    if (!res) return;
-    const data = await res.json();
-    if (res.ok) {
-      showToast(`✅ Job cancelled`);
-    } else {
-      showToast(data.error || 'Cannot cancel');
-    }
-    loadQueue();
-  } catch { showToast('Failed to cancel'); }
+    const r = await postJson(path, body);
+    if (!r) return;
+    showToast(r.ok ? okMsg(r.data) : (r.data.error || failMsg));
+  } catch { showToast(failMsg); }
+  pollQueue();
 }
 
-async function cancelAllQueue() {
+function cancelQueueJob(jobId) {
+  queueAction('/queue/cancel', { job_id: jobId }, () => '✅ Job cancelled', 'Cannot cancel');
+}
+
+function cancelAllQueue() {
   if (!confirm('Cancel all queued jobs?')) return;
-  try {
-    const res = await apiFetch(`${API}/queue/cancel-all`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'}
-    });
-    if (!res) return;
-    const data = await res.json();
-    showToast(`✅ ${data.message}`);
-    loadQueue();
-  } catch { showToast('Failed to cancel'); }
+  queueAction('/queue/cancel-all', {}, d => `✅ ${d.message}`, 'Failed to cancel');
+}
+
+// No jobId → every failed job.
+function retryJob(jobId) {
+  // A retried job that fails again should be announced again
+  queueJobs?.filter(j => j.status === 'failed' && (!jobId || j.id === jobId)).forEach(j => seenFailed.delete(j.id));
+  queueAction('/queue/retry', jobId ? { job_id: jobId } : {},
+    d => `↻ ${d.count} job${d.count !== 1 ? 's' : ''} back in the queue`, 'Could not retry');
+}
+
+function dismissJob(jobId) {
+  if (!jobId && !confirm('Clear all failed jobs without printing them?')) return;
+  queueAction('/queue/dismiss', jobId ? { job_id: jobId } : {},
+    d => `Cleared ${d.count} failed job${d.count !== 1 ? 's' : ''}`, 'Could not clear');
 }
 
 // ── Reprint from history ─────────────────────
@@ -2136,8 +3257,10 @@ function fillFormFromLogs(logs) {
   const first = logs[0];
   const pd = parseLabelDate(first.packed_on, first.batch_no, false);
   const bb = parseLabelDate(first.best_before, first.batch_no, true);
-  if (pd) document.getElementById('packedDate').value     = pd;
-  if (bb) document.getElementById('bestBeforeDate').value = bb;
+  // A reprint must match the original, so these count as dates set by hand:
+  // Use By stops following shelf life, and a new day won't move Packed.
+  if (pd) { document.getElementById('packedDate').value = pd; packedCustom = pd !== todayStr(); }
+  if (bb) { document.getElementById('bestBeforeDate').value = bb; useByAuto = false; }
 
   const mixed  = logs.some(l => l.packed_on !== first.packed_on || l.best_before !== first.best_before);
   const notNow = !!pd && pd !== formatDateInput(new Date());
@@ -2228,7 +3351,127 @@ function onStickerTypeChange() {
   document.getElementById('fssaiSection').style.display        = type === 'fssai'       ? 'block' : 'none';
   document.getElementById('printHotelWrap').style.display      = type === 'product'     ? 'block' : 'none';
   document.getElementById('dateFieldsWrap').style.display      = type === 'product'     ? 'flex'  : 'none';
+  document.getElementById('useByNote').hidden                  = type !== 'product';
   document.getElementById('results').innerHTML = '';
+  if (type === 'ingredients' && !ingTemplatesLoaded) loadIngTemplates();
+}
+
+// ── Saved ingredient lists ───────────────────
+let ingTemplates = [];
+let ingTemplatesLoaded = false;
+
+async function loadIngTemplates(selectName) {
+  try {
+    const res = await apiFetch(`${API}/ingredient-templates`);
+    if (!res || !res.ok) return;
+    ingTemplates = (await res.json()).templates || [];
+    ingTemplatesLoaded = true;
+    renderIngTemplates(selectName);
+  } catch {}
+}
+
+function renderIngTemplates(selectName) {
+  const sel = document.getElementById('ingTemplate');
+  const cur = selectName ?? sel.value;
+  sel.innerHTML = `<option value="">${ingTemplates.length ? '— Pick a saved list —' : 'No saved lists yet'}</option>` +
+    ingTemplates.map(t => `<option value="${escHtml(t.name)}">${escHtml(t.name)}</option>`).join('');
+  sel.value = ingTemplates.some(t => t.name === cur) ? cur : '';
+  document.getElementById('ingTemplateDelete').disabled = !sel.value;
+}
+
+function onIngTemplateChange() {
+  const t = ingTemplates.find(t => t.name === document.getElementById('ingTemplate').value);
+  document.getElementById('ingTemplateDelete').disabled = !t;
+  if (!t) return;
+  const ta = document.getElementById('ingredientsText');
+  ta.value = t.text;
+  ta.classList.remove('error');
+}
+
+async function saveIngTemplate() {
+  const text = document.getElementById('ingredientsText').value.trim();
+  if (!text) { showToast('Type the ingredients first, then save them'); return; }
+  const name = prompt('Save these ingredients as:', document.getElementById('ingTemplate').value || '');
+  if (name === null || !name.trim()) return;
+  const exists = ingTemplates.some(t => t.name.toLowerCase() === name.trim().toLowerCase());
+  if (exists && !confirm(`Replace the saved list "${name.trim()}"?`)) return;
+  try {
+    const r = await postJson('/ingredient-templates/save', { name: name.trim(), text });
+    if (!r) return;
+    if (!r.ok) { showToast(r.data.error || 'Could not save'); return; }
+    ingTemplates = r.data.templates || [];
+    renderIngTemplates(ingTemplates.find(t => t.name.toLowerCase() === name.trim().toLowerCase())?.name);
+    showToast(`💾 Saved "${name.trim()}"`);
+  } catch { showToast('Could not save'); }
+}
+
+async function deleteIngTemplate() {
+  const name = document.getElementById('ingTemplate').value;
+  if (!name || !confirm(`Delete the saved list "${name}"?`)) return;
+  try {
+    const r = await postJson('/ingredient-templates/remove', { name });
+    if (!r) return;
+    if (!r.ok) { showToast(r.data.error || 'Could not delete'); return; }
+    ingTemplates = r.data.templates || [];
+    renderIngTemplates('');
+    showToast(`Deleted "${name}"`);
+  } catch { showToast('Could not delete'); }
+}
+
+// ── Label preview ────────────────────────────
+let previewUrl = null;
+
+async function showPreview(body, caption) {
+  const modal = document.getElementById('previewModal');
+  const img   = document.getElementById('previewImg');
+  const msg   = document.getElementById('previewMsg');
+  modal.hidden = false;
+  img.hidden = true;
+  msg.textContent = 'Rendering…';
+  document.getElementById('previewClose').focus();
+  try {
+    const res = await apiFetch(`${API}/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res) { closePreview(); return; }
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      msg.textContent = '❌ ' + cleanServerError(d.error || 'Could not render the preview');
+      return;
+    }
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(await res.blob());
+    img.src = previewUrl;
+    img.hidden = false;
+    msg.textContent = caption || '';
+  } catch { msg.textContent = '❌ Cannot reach server'; }
+}
+
+function closePreview() {
+  document.getElementById('previewModal').hidden = true;
+}
+
+function previewRow(id) {
+  const prod = (document.getElementById(`prod-${id}`)?.value || '').trim().toUpperCase();
+  if (!prod) { document.getElementById(`prod-${id}`)?.focus(); showToast('Enter a product to preview'); return; }
+  const wt = (document.getElementById(`wt-${id}`)?.value || '').trim();
+  // The quantity doesn't change the label, so an empty one isn't a reason to refuse
+  showPreview({
+    line:        wt ? `${prod},1,${wt}` : `${prod},1`,
+    hotel:       getSelectedPrintHotel(),
+    packed_on:   formatDateForServer(document.getElementById('packedDate')?.value || ''),
+    best_before: useByAuto ? '' : formatDateForServer(document.getElementById('bestBeforeDate')?.value || ''),
+  }, 'The batch number is shown as xxx here; the real one is assigned when it prints.');
+}
+
+function previewIngredients() {
+  const text = (document.getElementById('ingredientsText')?.value || '').trim();
+  if (!text) { showToast('Enter ingredients text to preview'); return; }
+  showPreview({ line: `${text} ;; i 1` });
+}
+
+function previewFssai() {
+  const number = document.getElementById('fssaiNumber').value.replace(/\s+/g, '');
+  if (!/^[0-9]{14}$/.test(number)) { showToast('FSSAI number must be 14 digits'); return; }
+  showPreview({ line: `${number} ;; f 1` });
 }
 
 // ── Ingredients print ────────────────────────
@@ -2258,6 +3501,9 @@ async function submitIngredientsPrint() {
     if (!confirm(`⚠️ You are about to print ${qty} ingredients stickers. Are you sure?`)) return;
   }
 
+  // Warn if the printer looks offline — jobs still queue, but flag it.
+  if (!await confirmPrinterReady()) return;
+
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
 
@@ -2270,10 +3516,12 @@ async function submitIngredientsPrint() {
       })
     });
     if (!res) return;
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(data.results)) { showToast(data.error || 'Could not queue the print'); return; }
     showIngredientsResults(data.results);
+    if (data.results.some(r => r.success)) pollQueue();
   } catch { showToast('❌ Cannot reach server'); }
-  finally { btn.disabled = false; content.innerHTML = '🖨️ PRINT INGREDIENTS'; }
+  finally { btn.disabled = !navigator.onLine; content.innerHTML = '🖨️ PRINT INGREDIENTS'; }
 }
 
 function showIngredientsResults(results) {
@@ -2286,15 +3534,15 @@ function showIngredientsResults(results) {
       d.innerHTML = `
         <div class="result-icon">✅</div>
         <div>
-          <div class="result-product">Ingredients × ${r.quantity}</div>
-          <div class="result-detail">Ingredients sticker printed successfully</div>
+          <div class="result-product">Ingredients × ${escHtml(r.quantity)}</div>
+          <div class="result-detail">Queued for printing — the Queue tab shows when it's done</div>
         </div>`;
     } else {
       d.innerHTML = `
         <div class="result-icon">❌</div>
         <div>
           <div class="result-product">Ingredients</div>
-          <div class="result-detail" style="color:var(--red)">${r.error || 'Failed'}</div>
+          <div class="result-detail" style="color:var(--red)">${escHtml(cleanServerError(r.error))}</div>
         </div>`;
     }
     c.appendChild(d);
@@ -2305,6 +3553,8 @@ function showIngredientsResults(results) {
 function resetIngredients() {
   document.getElementById('ingredientsText').value = '';
   document.getElementById('ingredientsQty').value  = '1';
+  document.getElementById('ingTemplate').value     = '';
+  document.getElementById('ingTemplateDelete').disabled = true;
   document.getElementById('results').innerHTML     = '';
   document.getElementById('ingredientsText')?.classList.remove('error');
   document.getElementById('ingredientsQty')?.classList.remove('error');
@@ -2341,9 +3591,7 @@ async function submitFssaiPrint() {
   }
 
   // Warn if the printer looks offline — jobs still queue, but flag it.
-  if (printerOnline === false) {
-    if (!confirm('⚠️ The printer appears to be offline.\n\nYour job will be queued and will print automatically once the printer is back online. Continue?')) return;
-  }
+  if (!await confirmPrinterReady()) return;
 
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
@@ -2357,11 +3605,12 @@ async function submitFssaiPrint() {
       })
     });
     if (!res) return;
-    const data = await res.json();
-    if (!res.ok) { showToast(data.error || 'Could not queue the print'); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(data.results)) { showToast(data.error || 'Could not queue the print'); return; }
     showFssaiResults(data.results, number);
+    if (data.results.some(r => r.success)) pollQueue();
   } catch { showToast('❌ Cannot reach server'); }
-  finally { btn.disabled = false; content.innerHTML = '🖨️ PRINT FSSAI LOGO'; }
+  finally { btn.disabled = !navigator.onLine; content.innerHTML = '🖨️ PRINT FSSAI LOGO'; }
 }
 
 function showFssaiResults(results, number) {
@@ -2382,7 +3631,7 @@ function showFssaiResults(results, number) {
         <div class="result-icon">❌</div>
         <div>
           <div class="result-product">FSSAI Logo</div>
-          <div class="result-detail" style="color:var(--red)">${escHtml(r.error || 'Failed')}</div>
+          <div class="result-detail" style="color:var(--red)">${escHtml(cleanServerError(r.error))}</div>
         </div>`;
     }
     c.appendChild(d);
@@ -2391,7 +3640,7 @@ function showFssaiResults(results, number) {
 }
 
 function resetFssai() {
-  document.getElementById('fssaiNumber').value = '';
+  document.getElementById('fssaiNumber').value = savedSettings?.fssai_number || '';
   document.getElementById('fssaiQty').value    = '1';
   document.getElementById('results').innerHTML = '';
   document.getElementById('fssaiNumber').classList.remove('error');
@@ -2400,12 +3649,24 @@ function resetFssai() {
 }
 
 // ── Toast ─────────────────────────────────────
-function showToast(msg) {
+// `action` = {label, fn} adds a button (Undo, View) and keeps the toast up longer.
+function showToast(msg, action) {
   document.querySelector('.toast')?.remove();
   const t = document.createElement('div');
-  t.className='toast'; t.setAttribute('role','status'); t.textContent=msg;
+  t.className='toast'; t.setAttribute('role','status');
+  const text = document.createElement('span');
+  text.textContent = msg;
+  t.appendChild(text);
+  const ms = action ? 6000 : 3000;
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'toast-action'; b.textContent = action.label;
+    b.onclick = () => { t.remove(); action.fn(); };
+    t.appendChild(b);
+    t.style.animation = `toastIn 0.2s ease, toastOut 0.3s ease ${(ms - 500) / 1000}s forwards`;
+  }
   document.body.appendChild(t);
-  setTimeout(()=>t.remove(), 3000);
+  setTimeout(()=>t.remove(), ms);
 }
 </script>
 

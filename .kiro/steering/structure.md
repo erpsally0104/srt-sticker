@@ -10,9 +10,10 @@ Flat, single-directory Python project. All modules live in the repo root; there 
 | `server.py` | Flask API entry point. JWT-protected endpoints for the web UI (login, print, products, queue, logs, status). |
 | `parser.py` | `parse_message()` + `PrintRequest` dataclass. Turns text lines into print requests; handles dates, weights, and ingredients format. |
 | `printer.py` | Renders labels to Pillow images, converts to TSPL bitmaps, prints via `win32print`. Also `get_printer_status()`. |
-| `print_queue.py` | Thread-safe singleton `PrintQueue` with a background worker. Jobs are queued, printed one at a time, and cancellable. |
+| `print_queue.py` | Thread-safe singleton `PrintQueue` with a background worker. Jobs are queued, printed one at a time, and cancellable; failed jobs can be retried (same batch number) or dismissed. |
 | `batch_manager.py` | `get_next_batch_number()` — daily-resetting sequential batch numbers. |
-| `product_manager.py` | CRUD over `products.json`, hotel-scoped, with flat→grouped auto-migration. |
+| `product_manager.py` | CRUD over `products.json`, hotel-scoped, with flat→grouped auto-migration. An entry is a weight string, or `{"weight", "shelf_months"}` once a shelf life is set. `find_product()` falls back to `general`. |
+| `templates_manager.py` | Saved ingredient texts over `ingredient_templates.json`. |
 | `user_manager.py` | Telegram auth over `users.json` (admin + authorized users). |
 | `settings_manager.py` | App settings over `settings.json`: printer `roll_type` (`single` / `double`) and print geometry (label size, gaps, margins) with validation. |
 | `auth.py` | Web UI auth: SQLite users, bcrypt, JWT access/refresh tokens. |

@@ -1,4 +1,5 @@
 import os
+import threading
 import win32print
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
@@ -36,7 +37,8 @@ DOUBLE_W_PX = EDGE_MARGIN_PX * 2 + LABEL_W_PX * 2 + H_GAP_PX
 def _apply_geometry():
     """
     Refresh module-level geometry from user settings before a print.
-    Safe because all rendering/printing happens on the single queue-worker thread.
+    Callers hold _render_lock: the queue worker is not the only renderer,
+    because /api/preview renders on a Flask request thread.
     The vertical gap depends on the currently selected roll type.
     """
     global LABEL_W_MM, LABEL_H_MM, H_GAP_MM, EDGE_MARGIN_MM, V_GAP_MM
@@ -512,14 +514,20 @@ def build_fssai_label_image(req):
     return img.convert("L").point(lambda p: 0 if p < 128 else 255).convert("RGB")
 
 
+# Geometry lives in module globals that _apply_geometry() rewrites, so a
+# preview must not re-point them halfway through the worker's render.
+_render_lock = threading.RLock()
+
+
 def render_label(req, batch_no: str = ""):
     """Render a single label (product, ingredients or FSSAI logo) to a PIL image."""
-    _apply_geometry()
-    if req.label_type == "ingredients":
-        return build_ingredients_label_image(req)
-    if req.label_type == "fssai":
-        return build_fssai_label_image(req)
-    return build_label_image(req, batch_no)
+    with _render_lock:
+        _apply_geometry()
+        if req.label_type == "ingredients":
+            return build_ingredients_label_image(req)
+        if req.label_type == "fssai":
+            return build_fssai_label_image(req)
+        return build_label_image(req, batch_no)
 
 
 def _pack_mono(img):
@@ -603,11 +611,12 @@ def _send_to_printer(tspl_data: bytes) -> bool:
 def print_label(req, batch_no: str = "") -> bool:
     """Single-roll path: print `req.quantity` identical labels, one per row."""
     try:
-        img = render_label(req, batch_no)
+        with _render_lock:
+            img  = render_label(req, batch_no)
+            tspl = _tspl_header(LABEL_W_MM, LABEL_H_MM) + _bitmap_block(img, req.quantity)
     except Exception as e:
         print(f"[Printer Error] {e}")
         return False
-    tspl = _tspl_header(LABEL_W_MM, LABEL_H_MM) + _bitmap_block(img, req.quantity)
     return _send_to_printer(tspl)
 
 
@@ -618,12 +627,13 @@ def print_double_rows(rows) -> bool:
     """
     if not rows:
         return True
-    _apply_geometry()
     try:
-        tspl = _tspl_header(DOUBLE_W_MM, LABEL_H_MM)
-        for left_img, right_img in rows:
-            canvas = _compose_double_row(left_img, right_img)
-            tspl += _bitmap_block(canvas, quantity=1)
+        with _render_lock:
+            _apply_geometry()
+            tspl = _tspl_header(DOUBLE_W_MM, LABEL_H_MM)
+            for left_img, right_img in rows:
+                canvas = _compose_double_row(left_img, right_img)
+                tspl += _bitmap_block(canvas, quantity=1)
     except Exception as e:
         print(f"[Printer Error] {e}")
         return False

@@ -1,24 +1,46 @@
 {
+  "id": "./",
   "name": "SRI RADHE Label Printer",
   "short_name": "SRT Labels",
   "description": "Label printing system for Sri Radhe Traders",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f5f0e8",
   "theme_color": "#FF6B00",
-  "orientation": "portrait",
+  "orientation": "any",
   "icons": [
     {
-      "src": "icon.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "icon.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Print Queue",
+      "short_name": "Queue",
+      "url": "./index.html?tab=queue",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Print History",
+      "short_name": "History",
+      "url": "./index.html?tab=history",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

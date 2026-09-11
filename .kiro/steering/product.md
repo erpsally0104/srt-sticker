@@ -23,7 +23,8 @@ There is also an **ingredients-only** sticker type that fills the label with aut
 ## Key business rules
 
 - **Batch number format**: `SRT{DDMMYY}{3-digit sequence}` (e.g. `SRT020426001`), sequence resets daily.
-- **Date defaults**: Packed On = today; Best Before = today + 3 months.
+- **Date defaults**: Packed On = today; Use By = Packed On + the product's shelf life (`shelf_months`, 3 when not set). In the web UI, Use By follows each product's shelf life until the operator picks one by hand, which then applies to every item.
+- **No guessed weights**: a product that isn't in the list must be given a weight; it is refused otherwise (the net quantity is a mandatory declaration).
 - **Date inputs** accept: `today`, `today + N months/days/years`, `DD/MM/YYYY`, `DD-MM-YYYY`, `DD/MM/YY`.
 - **Weight auto-units**: a bare number < 100 becomes KGS, >= 100 becomes GMS; explicit units are respected.
 - **Products are scoped per "hotel"** (client/institution). `general` is the default hotel; product weights fall back to `general` when not found for a specific hotel.

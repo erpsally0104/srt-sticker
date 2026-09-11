@@ -30,9 +30,17 @@ class QueueJob:
     batch_no: str
     username: str
     source: str  # "ui" or "telegram"
-    status: str = "queued"  # queued | printing | done | failed | cancelled
+    status: str = "queued"  # queued | printing | done | failed | cancelled | dismissed
     created_at: str = ""
     error: Optional[str] = None
+    finished_at: str = ""      # HH:MM:SS the job reached done / failed / cancelled
+    finished_ts: float = 0.0   # same moment as epoch seconds, for ordering
+    test: bool = False         # a calibration label: no batch number, not logged
+
+    def finish(self, status: str):
+        self.status = status
+        self.finished_at = datetime.now().strftime("%H:%M:%S")
+        self.finished_ts = time.time()
 
     def to_dict(self):
         return {
@@ -50,6 +58,9 @@ class QueueJob:
             "status": self.status,
             "created_at": self.created_at,
             "error": self.error,
+            "finished_at": self.finished_at,
+            "finished_ts": self.finished_ts,
+            "test": self.test,
         }
 
 
@@ -100,6 +111,25 @@ class PrintQueue:
                 jobs.append(job)
         return jobs
 
+    def add_test(self, req: PrintRequest, username: str) -> QueueJob:
+        """
+        Queue a calibration label. It prints "TEST" where the batch number
+        goes, so it neither uses up one of the day's lot numbers nor ends up
+        in the print history.
+        """
+        job = QueueJob(
+            id=uuid.uuid4().hex[:8],
+            req=req,
+            batch_no="TEST",
+            username=username,
+            source="ui",
+            created_at=datetime.now().strftime("%H:%M:%S"),
+            test=True,
+        )
+        with self._lock:
+            self._jobs[job.id] = job
+        return job
+
     def list_jobs(self) -> list:
         """Return all non-terminal jobs (queued + printing)."""
         with self._lock:
@@ -122,7 +152,7 @@ class PrintQueue:
                 return False
             if job.status != "queued":
                 return False  # can't cancel if already printing/done
-            job.status = "cancelled"
+            job.finish("cancelled")
             return True
 
     def cancel_all(self) -> int:
@@ -131,9 +161,39 @@ class PrintQueue:
         with self._lock:
             for job in self._jobs.values():
                 if job.status == "queued":
-                    job.status = "cancelled"
+                    job.finish("cancelled")
                     count += 1
         return count
+
+    def _failed(self, job_id: Optional[str]) -> list:
+        """Failed jobs: the one with job_id, or all of them when job_id is None. Call under the lock."""
+        return [j for j in self._jobs.values()
+                if j.status == "failed" and (job_id is None or j.id == job_id)]
+
+    def retry(self, job_id: Optional[str] = None) -> int:
+        """
+        Put failed jobs back in the queue: one by id, or every failed job.
+        They keep their batch number, since nothing was printed under it.
+        Returns how many were requeued.
+        """
+        with self._lock:
+            jobs = self._failed(job_id)
+            for job in jobs:
+                job.status = "queued"
+                job.error = None
+                job.finished_at, job.finished_ts = "", 0.0
+                # To the back, as if just submitted: the retry prints after
+                # anything that was already waiting.
+                self._jobs.move_to_end(job.id)
+            return len(jobs)
+
+    def dismiss(self, job_id: Optional[str] = None) -> int:
+        """Clear failed jobs from the list without printing them. Returns how many."""
+        with self._lock:
+            jobs = self._failed(job_id)
+            for job in jobs:
+                job.status = "dismissed"
+            return len(jobs)
 
     def _process_loop(self):
         """
@@ -165,8 +225,8 @@ class PrintQueue:
                 time.sleep(1)
 
     def _log_job(self, job):
-        """Log a completed product job (ingredients and FSSAI logo labels are not logged)."""
-        if job.req.label_type == "product":
+        """Log a completed product job (ingredients, FSSAI logo and test labels are not logged)."""
+        if job.req.label_type == "product" and not job.test:
             log_print(
                 username=job.username,
                 source=job.source,
@@ -195,9 +255,9 @@ class PrintQueue:
 
         with self._lock:
             if success:
-                job.status = "done"
+                job.finish("done")
             else:
-                job.status = "failed"
+                job.finish("failed")
                 if not job.error:
                     job.error = "Printer error"
 
@@ -245,19 +305,29 @@ class PrintQueue:
 
         success = print_double_rows(rows)
 
+        printed = []
         with self._lock:
             for job in jobs:
                 if job.id in failed_ids:
-                    job.status = "failed"
+                    job.finish("failed")
                     if not job.error:
                         job.error = "Render error"
                 elif success:
-                    job.status = "done"
-                    self._log_job(job)
+                    job.finish("done")
+                    printed.append(job)
                 else:
-                    job.status = "failed"
+                    job.finish("failed")
                     if not job.error:
                         job.error = "Printer error"
+
+        # Logged outside the lock, as in _process_single_next: the SQLite
+        # write can block for its full timeout, and holding the lock that
+        # long froze every queue request. A failed log must not undo a print.
+        for job in printed:
+            try:
+                self._log_job(job)
+            except Exception:
+                _log.exception("Could not write print log for job %s", job.id)
 
         self._cleanup()
         return True
@@ -276,7 +346,7 @@ class PrintQueue:
             terminal = [
                 jid
                 for jid, j in self._jobs.items()
-                if j.status in ("done", "failed", "cancelled")
+                if j.status in ("done", "failed", "cancelled", "dismissed")
             ]
             # Keep only the last 50 terminal jobs
             to_remove = terminal[:-50] if len(terminal) > 50 else []

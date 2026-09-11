@@ -59,10 +59,13 @@ def log_print(username: str, source: str, product: str, weight: str,
 
 
 def get_logs(username: str, is_admin: bool, limit: int = 100,
-             filter_user: str = None, filter_product: str = None) -> list:
+             filter_user: str = None, filter_product: str = None,
+             since_utc: str = None, until_utc: str = None, offset: int = 0) -> list:
     """
-    Fetch logs.
+    Fetch logs, newest first.
     Admin sees all, others see only their own.
+    since_utc / until_utc ("YYYY-MM-DD HH:MM:SS", UTC like the timestamps
+    themselves) bound the time range: since inclusive, until exclusive.
     """
     conn   = get_db()
     query  = "SELECT * FROM print_logs"
@@ -80,11 +83,18 @@ def get_logs(username: str, is_admin: bool, limit: int = 100,
         where.append("product LIKE ?")
         params.append(f"%{filter_product.upper()}%")
 
+    if since_utc:
+        where.append("timestamp >= ?")
+        params.append(since_utc)
+    if until_utc:
+        where.append("timestamp < ?")
+        params.append(until_utc)
+
     if where:
         query += " WHERE " + " AND ".join(where)
 
-    query += " ORDER BY id DESC LIMIT ?"
-    params.append(limit)
+    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
 
     rows = conn.execute(query, params).fetchall()
     conn.close()
