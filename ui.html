@@ -1165,6 +1165,7 @@ kbd {
       <button class="btn-primary" id="saveSettingsBtn" onclick="saveGeometry()" style="margin-top:0.25rem;">
         <span id="saveSettingsContent">💾 SAVE SETTINGS</span>
       </button>
+<<<<<<< Updated upstream
       <button class="btn-secondary" id="testPrintBtn" onclick="testPrint()">🧪 PRINT TEST LABEL</button>
       <div class="field-note">Prints one label ("TEST" in place of the batch number) with the saved settings, to check the layout lines up with the roll. It does not use a batch number or show in History.</div>
 
@@ -1180,6 +1181,33 @@ kbd {
           <span>Show a system notification when this app isn't on screen</span>
         </label>
         <div class="field-note" id="alertNotifyNote"></div>
+=======
+
+      <div class="card" style="margin-top:1rem;">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Change Password</div>
+        <div style="font-size:0.8rem; color:var(--muted); margin-bottom:10px;">
+          Changes the password for <strong id="pwUser">your account</strong>. You stay logged in on this device.
+        </div>
+
+        <label class="form-label" for="pwCurrent">Current password</label>
+        <input type="password" id="pwCurrent" autocomplete="current-password"
+          style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem; margin-bottom:12px;" />
+
+        <label class="form-label" for="pwNew">New password &mdash; at least 10 characters</label>
+        <input type="password" id="pwNew" autocomplete="new-password"
+          style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem; margin-bottom:12px;" />
+
+        <label class="form-label" for="pwConfirm">Confirm new password</label>
+        <input type="password" id="pwConfirm" autocomplete="new-password"
+          onkeydown="if(event.key==='Enter') changePassword()"
+          style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.95rem;" />
+
+        <div id="pwMsg" role="status" style="font-size:0.8rem; font-weight:600; margin-top:10px;"></div>
+
+        <button class="btn-primary" id="pwBtn" onclick="changePassword()" style="margin-top:10px;">
+          <span id="pwBtnContent">🔑 UPDATE PASSWORD</span>
+        </button>
+>>>>>>> Stashed changes
       </div>
     </div>
 
@@ -1307,6 +1335,8 @@ function showLogin() {
 function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('mainApp').style.display     = 'block';
+  const pu = document.getElementById('pwUser');
+  if (pu) pu.textContent = getUsername() || 'your account';
 }
 
 async function doLogin() {
@@ -1681,6 +1711,56 @@ async function testPrint() {
   finally { btn.disabled = false; }
 }
 
+// ── Change password ───────────────────────────
+function setPwMsg(text, ok) {
+  const el = document.getElementById('pwMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = ok ? 'var(--green)' : 'var(--red)';
+}
+
+async function changePassword() {
+  const curEl = document.getElementById('pwCurrent');
+  const newEl = document.getElementById('pwNew');
+  const conEl = document.getElementById('pwConfirm');
+  const btn   = document.getElementById('pwBtn');
+  const content = document.getElementById('pwBtnContent');
+
+  const current = curEl.value;
+  const next    = newEl.value;
+
+  // Checked here as well as on the server so the common mistakes give an
+  // instant answer instead of a round trip.
+  if (!current)                 return setPwMsg('Enter your current password.', false);
+  if (next.length < 10)         return setPwMsg('New password must be at least 10 characters.', false);
+  if (next !== conEl.value)     return setPwMsg('The two new passwords do not match.', false);
+  if (next === current)         return setPwMsg('New password must be different from the current one.', false);
+
+  btn.disabled = true; content.innerHTML = '<div class="spinner"></div>';
+  setPwMsg('', true);
+  try {
+    const res = await apiFetch(`${API}/change-password`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({current_password: current, new_password: next})
+    });
+    const data = res ? await res.json() : null;
+    if (res && res.ok) {
+      // The server re-issues tokens, so this device stays signed in.
+      if (data && data.access_token) saveTokens(data);
+      curEl.value = newEl.value = conEl.value = '';
+      setPwMsg('Password updated. Use it next time you sign in.', true);
+      showToast('✅ Password updated');
+    } else {
+      setPwMsg((data && data.error) || 'Could not update password.', false);
+    }
+  } catch {
+    setPwMsg('Could not reach the server.', false);
+  } finally {
+    btn.disabled = false; content.innerHTML = '🔑 UPDATE PASSWORD';
+  }
+}
+
 async function onRollTypeChange() {
   const val = document.getElementById('rollType').value;
   updateRollHint();
@@ -1800,6 +1880,7 @@ function checkDayRollover() {
   if (!datesDay || datesDay === today) return;
   datesDay = today;
   const packedEl = document.getElementById('packedDate');
+<<<<<<< Updated upstream
   if (!packedCustom) {
     packedEl.value = today;
     refreshUseBy();
@@ -1810,6 +1891,28 @@ function checkDayRollover() {
     const d = parseInputDate(packedEl.value);
     showDateNotice(`⚠️ It's a new day. Packed Date is still <strong>${d ? d.toLocaleDateString('en-GB') : '—'}</strong> — change it if you are packing today.`);
   }
+=======
+  const bbEl     = document.getElementById('bestBeforeDate');
+  if (packedEl) packedEl.value = formatDateInput(today);
+  if (bbEl)     bbEl.value     = formatDateInput(addMonthsClamped(today, 3));
+}
+
+// Add calendar months the way the server does (dateutil relativedelta): the day
+// is clamped to the target month, so 31 Aug + 3 months is 30 Nov, not 1 Dec.
+// A plain setMonth() overflows at month end and pushed Use By past the 3-month
+// boundary, which flips the printed dates into the "MON YYYY" form.
+function addMonthsClamped(d, n) {
+  const t   = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  const dim = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(d.getDate(), dim));
+  return t;
+}
+
+function parseDateInput(s) {
+  // YYYY-MM-DD (from <input type="date">) → local Date, or null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+>>>>>>> Stashed changes
 }
 
 function formatDateInput(d) {
@@ -1829,6 +1932,7 @@ function formatDateForServer(dateStr) {
 }
 
 function onPackedDateChange() {
+<<<<<<< Updated upstream
   // A new Packed date recomputes Use By from the products' shelf life, as it always did
   const packedVal = document.getElementById('packedDate')?.value;
   if (!packedVal) return;
@@ -1837,14 +1941,26 @@ function onPackedDateChange() {
   useByAuto    = true;
   hideDateNotice();
   refreshUseBy();
+=======
+  // When packed date changes, auto-update best before to packed + 3 months
+  const packed = parseDateInput(document.getElementById('packedDate')?.value);
+  if (!packed) return;
+  const bbEl = document.getElementById('bestBeforeDate');
+  if (bbEl) bbEl.value = formatDateInput(addMonthsClamped(packed, 3));
+  hideDateNotice();        // the operator chose this date; nothing is "from history" any more
+>>>>>>> Stashed changes
   saveDraft();
 }
 
 function onBestBeforeChange() {
+<<<<<<< Updated upstream
   // Clearing the box hands Use By back to the products' shelf life
   useByAuto = !document.getElementById('bestBeforeDate').value;
   hideDateNotice();
   refreshUseBy();
+=======
+  refreshDateNotice();     // keep the history notice; re-check the >3-month format hint
+>>>>>>> Stashed changes
   saveDraft();
 }
 
@@ -1967,6 +2083,7 @@ function addRow(product='', qty='', weight='') {
   // keyboard way, so they stay out of the Tab order.
   div.innerHTML = `
     <div class="combo-wrap" style="margin-bottom:8px;">
+<<<<<<< Updated upstream
       <input type="text" id="prod-${id}" class="prod-input" placeholder="Product name" value="${escHtml(product)}"
         aria-label="Product name" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="combo-dd-${id}"
         autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next"
@@ -1982,6 +2099,21 @@ function addRow(product='', qty='', weight='') {
         autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next"
         aria-label="Weight" oninput="onWeightInput(${id})" onkeydown="onWeightKey(event, ${id})"/>
       <div class="uom-badge ${uom.cls}" id="uom-${id}" aria-hidden="true">${escHtml(uom.label||'—')}</div>
+=======
+      <input type="text" id="prod-${id}" placeholder="Product name" value="${escHtml(product)}"
+        style="text-transform:uppercase; padding-right:82px;"
+        aria-label="Product name"
+        oninput="onComboInput(${id})" onfocus="openCombo(${id})"
+        onblur="onComboBlur(${id})" onkeydown="onComboKey(event, ${id})" autocomplete="off"/>
+      <div class="combo-dropdown" id="combo-dd-${id}"></div>
+    </div>
+    <div class="job-row-fields">
+      <input type="number" id="qty-${id}" placeholder="Quantity" min="1" max="500" value="${escHtml(qty)}"
+        aria-label="Quantity" oninput="onQtyInput(${id})" onkeydown="onQtyKey(event, ${id})"/>
+      <input type="text"   id="wt-${id}"  placeholder="Weight" value="${escHtml(weight)}"
+        aria-label="Weight" oninput="onWeightInput(${id})"/>
+      <div class="uom-badge ${uom.cls}" id="uom-${id}" aria-hidden="true">${uom.label||'—'}</div>
+>>>>>>> Stashed changes
     </div>
     <div class="row-meta" id="meta-${id}"></div>
     <div class="row-error" id="err-${id}" role="alert"></div>
@@ -2079,6 +2211,7 @@ function renderCombo(id, filter, autoPick) {
   comboState[id] = { items: filtered, hasNew, active, val };
 
   let html = filtered.map((p, i) => `
+<<<<<<< Updated upstream
     <div class="combo-option ${i===active?'active':''}" data-idx="${i}" id="opt-${id}-${i}"
       role="option" aria-selected="${i===active}" onmousedown="selectComboItem(${id},${i})">
       <span>${escHtml(p.name)}${p.inherited ? '<span class="combo-option-tag">general</span>' : ''}</span>
@@ -2088,6 +2221,15 @@ function renderCombo(id, filter, autoPick) {
     const newIdx = filtered.length;
     html += `<div class="combo-new ${newIdx===active?'active':''}" data-idx="${newIdx}" id="opt-${id}-${newIdx}"
       role="option" aria-selected="${newIdx===active}" onmousedown="addNewProduct(${id})">+ Add "${escHtml(val)}" to list</div>`;
+=======
+    <div class="combo-option ${i===active?'active':''}" data-idx="${i}"
+      onmousedown="selectOption(${id},'${escHtml(escJs(p.name))}',${parseFloat(p.weight)||''})">
+      <span>${escHtml(p.name)}</span><span class="combo-option-weight">${escHtml(p.weight)}</span>
+    </div>`).join('');
+  if (hasNew) {
+    const newIdx = filtered.length;
+    html += `<div class="combo-new ${newIdx===active?'active':''}" data-idx="${newIdx}" onmousedown="addNewProduct(${id})">+ Add "${escHtml(val)}" to list</div>`;
+>>>>>>> Stashed changes
   }
   dd.innerHTML = html || '<div class="combo-option" style="color:#aaa;pointer-events:none;">No products found</div>';
   const input = document.getElementById(`prod-${id}`);
@@ -2329,6 +2471,7 @@ async function submitPrint() {
   try {
     const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs, hotel, packed_on: packedOn, best_before: bestBefore})});
     if (!res) return;
+<<<<<<< Updated upstream
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !Array.isArray(data.results)) { showToast(data.error || 'Could not queue the print'); return; }
 
@@ -2364,6 +2507,19 @@ async function submitPrint() {
     ensureTrailingRow();
     refreshAfterChange();
     showToast(queued ? `✅ ${queued} queued · ❌ ${failed.length} need fixing` : '❌ Nothing queued — fix the items marked in red');
+=======
+    const data = await res.json();
+    showResults(data.results);
+    document.getElementById('jobRows').innerHTML='';
+    comboState = {};
+    rowId=0; addRow();
+    localStorage.removeItem(DRAFT_KEY);
+    if (historyDates) setDefaultDates();   // reprinted with old dates: don't backdate the next print
+    hideDateNotice();
+    updateSummary();
+    // Auto-switch to queue tab so user can see their jobs
+    switchTab('queue');
+>>>>>>> Stashed changes
   } catch { showToast('❌ Cannot reach server'); }
   finally { content.innerHTML='🖨️ PRINT LABELS'; updateSummary(); }
 }
@@ -2378,14 +2534,22 @@ function showResults(results) {
       d.innerHTML = `
         <div class="result-icon">✅</div>
         <div>
+<<<<<<< Updated upstream
           <div class="result-product">${escHtml(r.product)} × ${escHtml(r.quantity)} — queued</div>
+=======
+          <div class="result-product">${escHtml(r.product)} × ${escHtml(r.quantity)}</div>
+>>>>>>> Stashed changes
           <div class="result-detail">
             ${escHtml(r.weight)} · Packed: ${escHtml(r.packed_on)} · Use By: ${escHtml(r.best_before)}<br>
             Batch: <span class="result-batch">${escHtml(r.batch_no)}</span>
           </div>
         </div>`;
     } else {
+<<<<<<< Updated upstream
       d.innerHTML = `<div class="result-icon">❌</div><div><div class="result-product">${escHtml(r.line)}</div><div class="result-detail" style="color:var(--red)">${escHtml(cleanServerError(r.error))}</div></div>`;
+=======
+      d.innerHTML = `<div class="result-icon">❌</div><div><div class="result-product">${escHtml(r.line)}</div><div class="result-detail" style="color:var(--red)">${escHtml(r.error||'Failed')}</div></div>`;
+>>>>>>> Stashed changes
     }
     c.appendChild(d);
   });
@@ -2400,6 +2564,7 @@ function resetAll() {
   comboState = {};
   rowId=0; addRow();
   localStorage.removeItem(DRAFT_KEY);
+  if (historyDates) setDefaultDates();
   hideDateNotice();
   refreshUseBy();
   updateSummary();
@@ -2546,6 +2711,7 @@ function captureFormState() {
       qty:     document.getElementById(`qty-${id}`)?.value || '',
       weight:  document.getElementById(`wt-${id}`)?.value || '',
     });
+<<<<<<< Updated upstream
   });
   return {
     rows,
@@ -2584,6 +2750,17 @@ function applyFormState(st) {
 
 function saveDraft() {
   try { localStorage.setItem(DRAFT_KEY, JSON.stringify(captureFormState())); } catch {}
+=======
+    const draft = {
+      rows,
+      hotel:  document.getElementById('printHotel')?.value || 'general',
+      packed: document.getElementById('packedDate')?.value || '',
+      bb:     document.getElementById('bestBeforeDate')?.value || '',
+      notice: historyDates,
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch {}
+>>>>>>> Stashed changes
 }
 
 function readDraft() {
@@ -2597,7 +2774,25 @@ function restoreDraftOrDefault() {
   const draft = readDraft();
   const hasContent = draft && Array.isArray(draft.rows) && draft.rows.some(r => (r.product||'').trim());
 
+<<<<<<< Updated upstream
   if (!hasContent) {
+=======
+  if (hasContent) {
+    const printSel = document.getElementById('printHotel');
+    if (printSel && draft.hotel && hotels.includes(draft.hotel)) {
+      printSel.value = draft.hotel;
+      onPrintHotelChange();
+    }
+    if (draft.packed) document.getElementById('packedDate').value = draft.packed;
+    if (draft.bb)     document.getElementById('bestBeforeDate').value = draft.bb;
+    const n = draft.notice;
+    if (n && typeof n === 'object' && typeof n.packed === 'string' && typeof n.bb === 'string') {
+      showDateNotice({ packed: n.packed, bb: n.bb, mixed: !!n.mixed });
+    } else {
+      hideDateNotice();
+    }
+
+>>>>>>> Stashed changes
     document.getElementById('jobRows').innerHTML = '';
     comboState = {};
     rowId = 0;
@@ -2852,6 +3047,7 @@ let visibleLogIds = [];        // ids currently rendered, in list order (newest 
 
 const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+<<<<<<< Updated upstream
 const LOG_PAGE = 100;
 let logsOffset    = 0;   // rows already shown, for "Load more"
 let logsReqSeq    = 0;   // drops a response that a newer filter has overtaken
@@ -2883,6 +3079,17 @@ function fmtLogTime(ts) {
 
 async function loadLogs(append = false) {
   const seq     = ++logsReqSeq;
+=======
+// logger.py stores UTC; show the operator's local time in the card's DD/MM/YY style.
+const fmtLogTime = ts => {
+  if (!ts) return '';
+  const d = new Date(String(ts).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return String(ts).substring(0, 16).replace('T', ' ');
+  return d.toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23' });
+};
+
+async function loadLogs() {
+>>>>>>> Stashed changes
   const c       = document.getElementById('logsContainer');
   const more    = document.getElementById('logsMore');
   const product = (document.getElementById('logFilterProduct')?.value||'').trim();
@@ -2984,6 +3191,8 @@ function resetLogSelection() {
   selectedLogs  = new Set();
   logsById      = {};
   visibleLogIds = [];
+  const c  = document.getElementById('logsContainer'); if (c)  c.innerHTML = '';
+  const lc = document.getElementById('logsCount');     if (lc) lc.textContent = '';
   syncLogSelectionUI();
 }
 
@@ -3213,7 +3422,7 @@ function reprintSelected() {
   const logs = Array.from(selectedLogs).sort((a,b)=>b-a).map(id => logsById[id]).filter(Boolean);
   if (!logs.length) { showToast('Select items to reprint'); return; }
   const total = logs.reduce((s, l) => s + (parseInt(l.quantity) || 0), 0);
-  if ((logs.length > 20 || total > 50) &&
+  if (logs.length > 20 &&
       !confirm(`Load ${logs.length} items (${total} stickers) into the print form?`)) return;
   if (fillFormFromLogs(logs)) clearLogSelection();
 }
@@ -3238,7 +3447,8 @@ function fillFormFromLogs(logs) {
   const existing = formItems();
   if (existing.length) {
     const names = existing.slice(0, 3).map(r => r.product || '(no name)').join(', ') + (existing.length > 3 ? ', …' : '');
-    if (!confirm(`The print form already has ${existing.length} item${existing.length !== 1 ? 's' : ''} (${names}).\n\nReplace with the selected history item${logs.length !== 1 ? 's' : ''}?`)) return false;
+    const total = logs.reduce((s, l) => s + (parseInt(l.quantity) || 0), 0);
+    if (!confirm(`The print form already has ${existing.length} item${existing.length !== 1 ? 's' : ''} (${names}).\n\nReplace with ${logs.length} history item${logs.length !== 1 ? 's' : ''} (${total} stickers)?`)) return false;
   }
 
   switchTab('print');
@@ -3255,23 +3465,23 @@ function fillFormFromLogs(logs) {
   // Dates: start from defaults, then apply the first row's printed dates where they parse.
   setDefaultDates();
   const first = logs[0];
+<<<<<<< Updated upstream
   const pd = parseLabelDate(first.packed_on, first.batch_no, false);
   const bb = parseLabelDate(first.best_before, first.batch_no, true);
   // A reprint must match the original, so these count as dates set by hand:
   // Use By stops following shelf life, and a new day won't move Packed.
   if (pd) { document.getElementById('packedDate').value = pd; packedCustom = pd !== todayStr(); }
   if (bb) { document.getElementById('bestBeforeDate').value = bb; useByAuto = false; }
+=======
+  const pd = parseLabelDate(first.packed_on, false);
+  const bb = parseLabelDate(first.best_before, true);
+  if (pd) document.getElementById('packedDate').value     = pd;
+  if (bb) document.getElementById('bestBeforeDate').value = bb;
+>>>>>>> Stashed changes
 
-  const mixed  = logs.some(l => l.packed_on !== first.packed_on || l.best_before !== first.best_before);
-  const notNow = !!pd && pd !== formatDateInput(new Date());
-  const used   = `Packed <strong>${escHtml(first.packed_on)}</strong> · Use By <strong>${escHtml(first.best_before)}</strong>`;
-  if (mixed) {
-    showDateNotice(`⚠️ Selected items had different dates. Using ${used} from the most recent item — adjust above if needed.`);
-  } else if (notNow) {
-    showDateNotice(`📅 Dates taken from history: ${used}. Change Packed Date above to print for today.`);
-  } else {
-    hideDateNotice();
-  }
+  const mixed = logs.some(l => l.packed_on !== first.packed_on || l.best_before !== first.best_before);
+  if (pd || bb) showDateNotice({ packed: String(first.packed_on || ''), bb: String(first.best_before || ''), mixed });
+  else hideDateNotice();
 
   refreshAfterChange();
   showToast(logs.length === 1 ? '📋 Form loaded — edit and print' : `📋 ${logs.length} items loaded — edit and print`);
@@ -3296,29 +3506,44 @@ function weightForForm(logged) {
   return ((isKg && n < 100) || (isG && n >= 100)) ? String(n) : raw;
 }
 
-function showDateNotice(html) {
+// While the date inputs hold dates copied from a history row this describes
+// them; null once the operator picks a packed date, prints, or resets. It is
+// saved with the draft so a reload keeps the warning, and it is what tells
+// submitPrint/resetAll to put today's dates back afterwards.
+let historyDates = null;   // { packed, bb, mixed }
+
+function showDateNotice(state) { historyDates = state; refreshDateNotice(); }
+function hideDateNotice()      { historyDates = null;  refreshDateNotice(); }
+
+function refreshDateNotice() {
   const el = document.getElementById('dateNotice');
-  if (el) el.innerHTML = html;
+  if (!el) return;
+  const s = historyDates;
+  if (!s) { el.innerHTML = ''; return; }
+  const notToday = (document.getElementById('packedDate')?.value || '') !== formatDateInput(new Date());
+  const lines = [];
+  if (s.mixed) lines.push(`⚠️ Selected items had different dates — using the most recent item's.`);
+  if (s.mixed || notToday) lines.push(`📅 Dates taken from history: Packed <strong>${escHtml(s.packed)}</strong> · Use By <strong>${escHtml(s.bb)}</strong>. Change Packed Date above to print for today.`);
+  if (/^\d/.test(String(s.packed)) && willPrintMonthFormat()) lines.push(`ℹ️ Use By is more than 3 months after Packed, so the label will show month and year only (e.g. AUG 2026).`);
+  el.innerHTML = lines.join('<br>');
 }
-function hideDateNotice() {
-  const el = document.getElementById('dateNotice');
-  if (el) el.innerHTML = '';
+
+// Mirrors parser.format_date_pair: over 3 months of shelf life prints as MON YYYY.
+function willPrintMonthFormat() {
+  const pd = parseDateInput(document.getElementById('packedDate')?.value);
+  const bb = parseDateInput(document.getElementById('bestBeforeDate')?.value);
+  return !!(pd && bb) && bb > addMonthsClamped(pd, 3);
 }
 
 const MONTHS_UPPER = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
-function batchDate(batchNo) {
-  // Batch numbers are SRT + DDMMYY + 3-digit sequence → {day, month, year} or null
-  const m = String(batchNo||'').match(/^SRT(\d{2})(\d{2})(\d{2})\d{3}$/);
-  return m ? { day: parseInt(m[1]), month: parseInt(m[2]), year: 2000 + parseInt(m[3]) } : null;
-}
-
-function parseLabelDate(dateStr, batchNo, endOfMonth) {
+function parseLabelDate(dateStr, endOfMonth) {
   // Converts a printed label date back to YYYY-MM-DD for <input type="date">.
   //   DD/MM/YY or DD/MM/YYYY (also with '-')          → exact date
-  //   MON YYYY (e.g. SEP 2026; shelf life > 3 months) → month only. Use By takes the
-  //   last day of that month; Packed takes the day from the batch number when it is
-  //   in the same month (else the 1st) — so the reprint reads the same as the original.
+  //   MON YYYY (e.g. SEP 2026; shelf life > 3 months) → month only: the 1st for
+  //   Packed, the last day of the month for Use By. That pair is always more than
+  //   3 months apart, so the reprint comes out in the same MON YYYY form. (Taking
+  //   the day from the batch number could land on the boundary and flip the format.)
   if (!dateStr) return '';
   const s = String(dateStr).trim();
   let m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/);
@@ -3331,14 +3556,9 @@ function parseLabelDate(dateStr, batchNo, endOfMonth) {
     const month = MONTHS_UPPER.indexOf(m[1].toUpperCase()) + 1;
     if (!month) return '';
     const year = parseInt(m[2]);
-    const dim  = new Date(year, month, 0).getDate();   // days in that month
-    let day = 1;
-    if (endOfMonth) day = dim;
-    else {
-      const b = batchDate(batchNo);
-      if (b && b.month === month && b.year === year) day = b.day;
-    }
-    return `${year}-${String(month).padStart(2,'0')}-${String(Math.min(day, dim)).padStart(2,'0')}`;
+    const dim = new Date(year, month, 0).getDate();   // days in that month
+    const day = endOfMonth ? dim : 1;
+    return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
   }
   return '';
 }
@@ -3351,7 +3571,11 @@ function onStickerTypeChange() {
   document.getElementById('fssaiSection').style.display        = type === 'fssai'       ? 'block' : 'none';
   document.getElementById('printHotelWrap').style.display      = type === 'product'     ? 'block' : 'none';
   document.getElementById('dateFieldsWrap').style.display      = type === 'product'     ? 'flex'  : 'none';
+<<<<<<< Updated upstream
   document.getElementById('useByNote').hidden                  = type !== 'product';
+=======
+  document.getElementById('dateNotice').style.display          = type === 'product'     ? ''      : 'none';
+>>>>>>> Stashed changes
   document.getElementById('results').innerHTML = '';
   if (type === 'ingredients' && !ingTemplatesLoaded) loadIngTemplates();
 }

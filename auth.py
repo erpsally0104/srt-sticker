@@ -104,6 +104,46 @@ def verify_user(username: str, password: str) -> bool:
     return bcrypt.checkpw(password.encode(), row["password"].encode())
 
 
+MIN_PASSWORD_LEN = 10
+
+
+def change_password(username: str, old_password: str, new_password: str):
+    """
+    Change a user's own password. Returns (ok: bool, error: str | None).
+
+    There was no way to do this in the app at all, which is why the seed
+    password stayed live long after it had leaked: init_db() only seeds
+    `if not existing`, so the account it created was never revisited.
+
+    The current password is required even though the caller already holds a
+    valid token — a token lifted from a shared browser should not be enough
+    to lock the real owner out of their own account.
+    """
+    new_password = (new_password or "")
+
+    if len(new_password) < MIN_PASSWORD_LEN:
+        return False, f"New password must be at least {MIN_PASSWORD_LEN} characters."
+    if new_password == old_password:
+        return False, "New password must be different from the current one."
+
+    if not verify_user(username, old_password or ""):
+        return False, "Current password is incorrect."
+
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "UPDATE users SET password = ? WHERE username = ?", (hashed, username)
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            return False, "User not found."
+    finally:
+        conn.close()
+
+    return True, None
+
+
 def generate_tokens(username: str) -> dict:
     now = datetime.now(timezone.utc)
 

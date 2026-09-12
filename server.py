@@ -6,7 +6,8 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from functools import wraps
 
-from auth import init_db, verify_user, generate_tokens, verify_access_token, verify_refresh_token
+from auth import (init_db, verify_user, generate_tokens, verify_access_token,
+                  verify_refresh_token, change_password)
 from logger import log_print, get_logs, get_all_usernames
 from parser import parse_message, format_date_pair, PrintRequest
 from printer import print_label, render_label, get_printer_status, check_printer
@@ -105,6 +106,32 @@ def refresh():
 
 
 # ── Protected endpoints ───────────────────────────
+@app.route("/api/change-password", methods=["POST"])
+@require_auth
+def api_change_password():
+    """
+    Change your OWN password. Deliberately not an admin function: it acts on
+    request.username from the token, so nobody can set anyone else's password
+    by passing a different name in the body.
+    """
+    body = request.get_json() or {}
+    ok, err = change_password(
+        request.username,
+        (body.get("current_password") or ""),
+        (body.get("new_password") or ""),
+    )
+    if not ok:
+        return jsonify({"error": err}), 400
+
+    # Existing tokens keep working: there is no revocation list, and the
+    # signing key is shared, so re-issuing here at least hands the caller a
+    # fresh pair rather than leaving them on ones minted before the change.
+    tokens = generate_tokens(request.username)
+    tokens["username"] = request.username
+    tokens["is_admin"] = request.username == ADMIN_USER
+    return jsonify(tokens)
+
+
 @app.route("/api/status", methods=["GET"])
 @require_auth
 def status():

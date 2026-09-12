@@ -1,7 +1,7 @@
 import os
 import threading
 import win32print
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageFilter
 import qrcode
 import textwrap
 from parser import PrintRequest
@@ -124,12 +124,43 @@ def fit_font(draw, text, path, size, max_width, fallback=None, min_size=9):
 # and save it as fssai_logo.png beside this module. A wordmark around
 # 2.5:1 (w:h) sits best on the licence line; transparent PNG is fine.
 FSSAI_LOGO_PATH = os.path.join(os.path.dirname(__file__), "fssai_logo.png")
-FSSAI_LOGO_H    = 26   # px at 203 dpi ≈ 3.3 mm tall
-# Alpha cut for the silhouette below. The mark is downscaled ~38x, so its
-# edges land on part-transparent pixels; a low cut keeps them, which
-# thickens every stroke by roughly half a dot. That matters because a
-# 1-dot-wide line is the faintest mark a thermal head can make.
+# 30 px at 203 dpi ≈ 3.75 mm tall (61 px ≈ 7.6 mm wide). No FSSAI regulation
+# prescribes a minimum size for the mark itself — Reg 5(7)(a) asks only that it
+# be "displayed ... in contrast color to the background", i.e. that it print
+# solid — so this is chosen on legibility and fit, not on a legal minimum.
+# 30 is the practical ceiling: the logo is centred on the licence text's
+# optical centre and occupies rows 213-242, between the divider rule (rows
+# 209-210) and the company-name line. See build_label_image().
+FSSAI_LOGO_H = 30
+
+# Alpha cut for the silhouette. The mark is multi-coloured — an indigo wordmark
+# between an orange rule and a green rule — so a brightness threshold judges
+# each colour separately and can drop the orange rule (luminance 144) whole.
+# Every non-transparent pixel is artwork regardless of colour, so alpha is the
+# correct silhouette for the single-colour reproduction Reg 5(7)(a) allows.
 FSSAI_LOGO_ALPHA_T = 90
+
+# Fallback cut for flattened artwork (no usable alpha). Distance from white,
+# 255 - min(R,G,B), NOT luminance: it clusters the three brand inks at 205-231
+# where luminance spreads them over 59-144.
+FSSAI_LOGO_INK_T = 64
+
+# ── Stroke weight (this is the "make it darker" control) ────────────────
+# At 203 dpi a 1-dot line is the faintest mark the head can make: it under-
+# burns and prints grey and patchy, which is what "the logo is too dull"
+# actually was. Both full-width rules in this wordmark resolve to exactly one
+# dot if the artwork is simply downscaled, at every height that fits the label.
+# So: binarise at SOURCE resolution, upscale SS×, dilate ONE pixel there (= half
+# a dot at final size, unlike a MaxFilter at final size, which grows a whole
+# dot, fuses the letters into the rules and destroys the prescribed artwork),
+# then area-average down and decide each final dot on coverage. Measured at
+# H=30: 34.7% ink, both rules 2 dots, 3.3% of horizontal ink runs left at 1 px
+# (was 26.5% / 1 dot / 11.9%).
+FSSAI_LOGO_SS     = 4     # supersample factor; must be >=4 — at 2 the dilate blobs
+FSSAI_LOGO_DILATE = 1     # px at SS scale; 2 closes the letterforms
+FSSAI_LOGO_COV    = 128   # a final dot is ink if >=50% covered. Lower = bolder
+                          # (96 -> 36.3%). Do NOT raise above 128: at 160 both
+                          # rules collapse back to 1 dot and the fault returns.
 
 # ── Pre-printed veg mark keep-out ─────────────
 # The label stock carries the veg/non-veg mark pre-printed in the top-right
@@ -143,41 +174,77 @@ VEG_MARK_MARGIN = 6    # px of clear space between the name and the mark
 _logo_cache = {}
 
 
+<<<<<<< Updated upstream
 def load_fssai_logo(height=FSSAI_LOGO_H, max_width=None):
     """
     Load fssai_logo.png, scaled to `height` px and reduced to pure black
     and white for the thermal head. `max_width`, when given, caps the width
     as well, and the height then shrinks to keep the artwork's proportions.
+=======
+def load_fssai_logo(height=None):
+    """
+    Load fssai_logo.png, scaled to `height` px and reduced to pure black
+    and white with strokes thick enough for the thermal head.
+>>>>>>> Stashed changes
 
-    The mark is reduced by its ALPHA channel, not its brightness. The FSSAI
-    logo is multi-coloured -- an indigo wordmark between an orange rule and a
-    green rule -- and a brightness threshold judges each colour separately.
-    The orange rule sits at luminance 144, right on the old cut of 160, so it
-    was dropped entirely and the mark printed without it. Every non-transparent
-    pixel is part of the artwork regardless of its colour, so the alpha channel
-    is the correct silhouette for the single-colour reproduction Reg 5(7)(a)
-    allows -- and it reproduces the mark's shape exactly.
+    WHAT IS INK (source resolution). The mark is reduced by its ALPHA channel,
+    not its brightness: the logo is multi-coloured and a brightness threshold
+    judges each colour separately -- the orange rule sits at luminance 144,
+    right on the old cut of 160, and was dropped entirely, printing the mark
+    without it. Every non-transparent pixel is artwork whatever its colour, so
+    alpha is the exact silhouette for the single-colour reproduction that
+    Reg 5(7)(a) allows. Flattened artwork (no usable alpha) falls back to
+    255 - min(R,G,B), which is distance from white and treats all three brand
+    inks alike; plain luminance does not.
 
-    Falls back to the brightness threshold when the artwork has no usable
-    transparency (a flattened PNG or a JPEG), because there the alpha channel
-    is opaque everywhere and would render as a solid black box.
+    HOW WIDE (intermediate resolution). Thresholding first and only then
+    resampling is deliberate. The mark is reduced ~33x, and a downscale of
+    greyscale art blends stroke edges below the cut, leaving 1-dot hairlines --
+    the real cause of "the logo is too dull", because a 1-dot line under-burns
+    on a 203 dpi head and prints grey and broken. Both full-width rules in the
+    wordmark come out exactly one dot tall at every height that fits this
+    label. Dilating by one pixel on an SS-times-oversampled grid thickens every
+    feature by half a dot, which lifts both rules to 2 dots without fusing the
+    letters into them. A MaxFilter at final resolution grows a whole dot
+    instead and collapses the wordmark into a slab -- that misrepresents the
+    prescribed artwork and fails Reg 5(7)(a) from the other side.
+
+    IS THIS DOT INK (final resolution). The BOX downscale turns the dilated
+    silhouette into per-dot coverage; FSSAI_LOGO_COV decides. Everything the
+    printer sees is then pure 0/255, which matters because the finished label
+    goes through img.convert("1"), i.e. Floyd-Steinberg. Pure black/white
+    survives that untouched (verified: zero pixels flipped), but a greyscale
+    logo would be dithered into scattered single dots -- exactly the
+    under-burning being fixed here. Keep this threshold before the paste.
+
+    `height` is resolved at call time, not bound at import, so editing
+    FSSAI_LOGO_H (or sweeping heights from a REPL) actually takes effect.
 
     Returns None when the file is absent or unreadable, so the label falls
     back to a text-only licence line rather than failing to print. Cached on
-    the file's mtime, so dropping new artwork in is picked up without
-    restarting the bot.
+    the file's mtime and on every tuning constant, so dropping new artwork in
+    -- or changing a constant -- is picked up without restarting the bot.
     """
+    if height is None:
+        height = FSSAI_LOGO_H
+
     try:
         mtime = os.path.getmtime(FSSAI_LOGO_PATH)
     except OSError:
         return None
 
+<<<<<<< Updated upstream
     key = (height, max_width, FSSAI_LOGO_ALPHA_T, mtime)
+=======
+    key = (height, FSSAI_LOGO_ALPHA_T, FSSAI_LOGO_INK_T,
+           FSSAI_LOGO_SS, FSSAI_LOGO_DILATE, FSSAI_LOGO_COV, mtime)
+>>>>>>> Stashed changes
     if key in _logo_cache:
         return _logo_cache[key]
 
     try:
         src = Image.open(FSSAI_LOGO_PATH)
+<<<<<<< Updated upstream
         src = src.convert("RGBA")
         w, h = src.size
         target = (max(1, round(w * height / h)), height)
@@ -189,15 +256,46 @@ def load_fssai_logo(height=FSSAI_LOGO_H, max_width=None):
             # Normal path: transparent background, so alpha is the artwork.
             mask = alpha.resize(target, Image.LANCZOS)
             logo = mask.point(lambda p: 0 if p >= FSSAI_LOGO_ALPHA_T else 255)
+=======
+        # Mode P carries its transparency in .info, so test for it explicitly:
+        # converting straight to RGB would silently discard the alpha and turn
+        # the whole mark into a solid black box.
+        if src.mode in ("RGBA", "LA", "P") or "transparency" in src.info:
+            src = src.convert("RGBA")
+>>>>>>> Stashed changes
         else:
-            # Opaque artwork -- fall back to brightness. Kept generous at 200
-            # so the orange rule (luminance 144) survives this path too.
-            flat = Image.new("RGB", src.size, "white")
-            flat.paste(src, mask=alpha)
-            grey = flat.resize(target, Image.LANCZOS).convert("L")
-            logo = grey.point(lambda p: 0 if p < 200 else 255)
+            src = src.convert("RGB")
 
-        logo = logo.convert("RGB")
+        sw, sh = src.size
+        # Never set width and height independently -- the mark is a
+        # certification mark with fixed artwork and must not be distorted.
+        w = max(1, round(sw * height / sh))
+
+        alpha = src.getchannel("A") if src.mode == "RGBA" else None
+        if alpha is not None and alpha.getextrema()[0] < 255:
+            mask = alpha.point(lambda p: 255 if p >= FSSAI_LOGO_ALPHA_T else 0)
+        else:
+            # Opaque artwork: composite onto white first, or the transparent
+            # backdrop's own colour would read as ink.
+            flat = Image.new("RGB", src.size, "white")
+            if alpha is not None:
+                flat.paste(src, mask=alpha)
+            else:
+                flat.paste(src)
+            r, g, b = flat.split()
+            ink  = ImageChops.invert(ImageChops.darker(ImageChops.darker(r, g), b))
+            mask = ink.point(lambda p: 255 if p >= FSSAI_LOGO_INK_T else 0)
+
+        # NOTE the polarity flip: `mask` is 255 = ink (so MaxFilter dilates the
+        # artwork), while the label canvas is 0 = ink. The final point()
+        # inverts it back.
+        ss  = FSSAI_LOGO_SS
+        big = mask.resize((w * ss, height * ss), Image.Resampling.BOX)
+        big = big.point(lambda p: 255 if p >= 128 else 0)
+        if FSSAI_LOGO_DILATE:
+            big = big.filter(ImageFilter.MaxFilter(2 * FSSAI_LOGO_DILATE + 1))
+        cov  = big.resize((w, height), Image.Resampling.BOX)
+        logo = cov.point(lambda p: 0 if p >= FSSAI_LOGO_COV else 255).convert("RGB")
     except Exception as e:
         print(f"[Printer Warning] Could not load {FSSAI_LOGO_PATH}: {e}")
         return None
@@ -327,13 +425,19 @@ def build_label_image(req, batch_no):
         gx        = max(PAD, (LABEL_W_PX - group_w) // 2)
         # Sit the logo on the text's optical centre, not its box top
         logo_y = int(y + (bbox[1] + bbox[3]) / 2 - logo.height / 2)
-        img.paste(logo, (gx, logo_y))
+        # Paste ink only. The divider is drawn first and the logo box overlaps
+        # it as the mark grows; an unmasked paste would white out mandatory
+        # content instead of just colliding with it.
+        img.paste(logo, (gx, logo_y), mask=ImageChops.invert(logo.convert("L")))
         draw.text((gx + logo.width + LOGO_GAP, y), lic_text, font=lic_font, fill="black")
     else:
         fssai_text = f"FSSAI Lic. No. {fssai_number}"
         draw_centered(draw, y, fssai_text,
                       fit_font(draw, fssai_text, FONT_ARIAL_BD, 22, TEXT_MAX_W, FONT_ARIAL_NB))
-    y += 24
+    y += 28   # was 24. The logo is centred on the licence text's optical
+              # centre, so a taller mark grows both ways about this line; 28
+              # keeps 5 blank rows between the logo and the company name.
+              # Paid for out of the label's spare bottom rows (17 -> 13).
 
     # Reg 5(6)(a): name preceded by the qualifying phrase, then the
     # complete address on the following line.
