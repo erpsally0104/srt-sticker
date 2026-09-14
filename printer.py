@@ -174,18 +174,12 @@ VEG_MARK_MARGIN = 6    # px of clear space between the name and the mark
 _logo_cache = {}
 
 
-<<<<<<< Updated upstream
-def load_fssai_logo(height=FSSAI_LOGO_H, max_width=None):
+def load_fssai_logo(height=None, max_width=None):
     """
     Load fssai_logo.png, scaled to `height` px and reduced to pure black
-    and white for the thermal head. `max_width`, when given, caps the width
-    as well, and the height then shrinks to keep the artwork's proportions.
-=======
-def load_fssai_logo(height=None):
-    """
-    Load fssai_logo.png, scaled to `height` px and reduced to pure black
-    and white with strokes thick enough for the thermal head.
->>>>>>> Stashed changes
+    and white with strokes thick enough for the thermal head. `max_width`,
+    when given, caps the width as well, and the height then shrinks to keep
+    the artwork's proportions.
 
     WHAT IS INK (source resolution). The mark is reduced by its ALPHA channel,
     not its brightness: the logo is multi-coloured and a brightness threshold
@@ -233,36 +227,18 @@ def load_fssai_logo(height=None):
     except OSError:
         return None
 
-<<<<<<< Updated upstream
-    key = (height, max_width, FSSAI_LOGO_ALPHA_T, mtime)
-=======
-    key = (height, FSSAI_LOGO_ALPHA_T, FSSAI_LOGO_INK_T,
+    key = (height, max_width, FSSAI_LOGO_ALPHA_T, FSSAI_LOGO_INK_T,
            FSSAI_LOGO_SS, FSSAI_LOGO_DILATE, FSSAI_LOGO_COV, mtime)
->>>>>>> Stashed changes
     if key in _logo_cache:
         return _logo_cache[key]
 
     try:
         src = Image.open(FSSAI_LOGO_PATH)
-<<<<<<< Updated upstream
-        src = src.convert("RGBA")
-        w, h = src.size
-        target = (max(1, round(w * height / h)), height)
-        if max_width and target[0] > max_width:
-            target = (max_width, max(1, round(h * max_width / w)))
-
-        alpha = src.split()[-1]
-        if alpha.getextrema()[0] < 255:
-            # Normal path: transparent background, so alpha is the artwork.
-            mask = alpha.resize(target, Image.LANCZOS)
-            logo = mask.point(lambda p: 0 if p >= FSSAI_LOGO_ALPHA_T else 255)
-=======
         # Mode P carries its transparency in .info, so test for it explicitly:
         # converting straight to RGB would silently discard the alpha and turn
         # the whole mark into a solid black box.
         if src.mode in ("RGBA", "LA", "P") or "transparency" in src.info:
             src = src.convert("RGBA")
->>>>>>> Stashed changes
         else:
             src = src.convert("RGB")
 
@@ -270,6 +246,8 @@ def load_fssai_logo(height=None):
         # Never set width and height independently -- the mark is a
         # certification mark with fixed artwork and must not be distorted.
         w = max(1, round(sw * height / sh))
+        if max_width and w > max_width:
+            w, height = max_width, max(1, round(sh * max_width / sw))
 
         alpha = src.getchannel("A") if src.mode == "RGBA" else None
         if alpha is not None and alpha.getextrema()[0] < 255:
