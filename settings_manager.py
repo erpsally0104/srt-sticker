@@ -38,6 +38,17 @@ LABEL_TEXT_DEFAULTS = {
     "company_address": "15-7-173/A, BEGUM BAZAR, HYDERABAD, TELANGANA - 500012",
 }
 
+# ── Date defaults ──────────────────────────────
+# Use By = Packed + this many months for any product that does not set its
+# own shelf life. A setting rather than a constant because it is a business
+# decision: FSSAI fixes the FORMAT of the two dates, not the shelf life.
+DATE_DEFAULTS = {
+    "default_shelf_months": 2,
+}
+
+# (min, max) months, for both this default and a product's own shelf life
+SHELF_MONTHS_LIMITS = (1, 60)
+
 # Dropped in the FSSAI compliance pass: the two visibility toggles could
 # produce a label with no licence number or no name and address, and
 # company_line has been split into prefix / name / address above.
@@ -46,6 +57,7 @@ RETIRED_KEYS = ("show_fssai", "show_company_line", "company_line")
 DEFAULT_SETTINGS = {
     "roll_type": "single",  # "single" (1 label per row) | "double" (2 labels side by side)
     **GEOMETRY_DEFAULTS,
+    **DATE_DEFAULTS,
     **LABEL_TEXT_DEFAULTS,
 }
 
@@ -151,6 +163,42 @@ def set_geometry(updates: dict):
         if val < lo or val > hi:
             return None, f"{key.replace('_mm','').replace('_',' ')} must be between {lo} and {hi} mm"
         val = int(val) if float(val).is_integer() else val
+        data[key] = val
+        applied[key] = val
+    _save(data)
+    return applied, None
+
+
+# ── Date settings ─────────────────────────────────
+def get_default_shelf_months() -> int:
+    """Months added to the packed date when a product sets no shelf life."""
+    lo, hi = SHELF_MONTHS_LIMITS
+    try:
+        val = int(_load().get("default_shelf_months", DATE_DEFAULTS["default_shelf_months"]))
+    except (TypeError, ValueError):
+        return DATE_DEFAULTS["default_shelf_months"]
+    return max(lo, min(hi, val))
+
+
+def set_date_settings(updates: dict):
+    """
+    Update the date defaults. Returns (applied_dict, None) on success or
+    (None, error_message) if a value is not a whole number in range.
+    """
+    if not updates:
+        return {}, None
+    data = _load()
+    applied = {}
+    lo, hi = SHELF_MONTHS_LIMITS
+    for key, raw in updates.items():
+        if key not in DATE_DEFAULTS:
+            continue
+        try:
+            val = int(str(raw).strip())
+        except (TypeError, ValueError):
+            return None, "Default shelf life must be a whole number of months"
+        if not lo <= val <= hi:
+            return None, f"Default shelf life must be between {lo} and {hi} months"
         data[key] = val
         applied[key] = val
     _save(data)

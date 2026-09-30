@@ -20,6 +20,7 @@ from product_manager import (
 from settings_manager import (
     get_settings, get_roll_type, set_roll_type, set_geometry, GEOMETRY_DEFAULTS,
     get_label_text_settings, set_label_text_settings, LABEL_TEXT_DEFAULTS,
+    get_default_shelf_months, set_date_settings, DATE_DEFAULTS,
 )
 from templates_manager import list_templates, save_template, remove_template
 
@@ -171,6 +172,13 @@ def update_app_settings():
     geo_updates = {k: body[k] for k in body if k in GEOMETRY_DEFAULTS}
     if geo_updates:
         applied, err = set_geometry(geo_updates)
+        if err:
+            return jsonify({"error": err}), 400
+
+    # Date defaults — the shelf life used when a product sets none (optional)
+    date_updates = {k: body[k] for k in body if k in DATE_DEFAULTS}
+    if date_updates:
+        applied, err = set_date_settings(date_updates)
         if err:
             return jsonify({"error": err}), 400
 
@@ -377,7 +385,7 @@ def preview_label():
 def test_print():
     """Queue a calibration label using the saved settings."""
     today = datetime.now()
-    packed, expiry = format_date_pair(today, today + relativedelta(months=3))
+    packed, expiry = format_date_pair(today, today + relativedelta(months=get_default_shelf_months()))
     # Two on a 2-up roll, so both columns can be checked for alignment
     qty = 2 if get_roll_type() == "double" else 1
     req = PrintRequest(product="TEST LABEL", weight="1 kg", quantity=qty,

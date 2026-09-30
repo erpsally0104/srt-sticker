@@ -3,14 +3,15 @@ import os
 import re
 import shutil
 
+from settings_manager import get_default_shelf_months, SHELF_MONTHS_LIMITS
+
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
 BACKUP_FILE   = PRODUCTS_FILE + ".bak"
 
 DEFAULT_HOTEL  = "general"
 
-# Use By = Packed + this many months, unless the product sets its own.
-DEFAULT_SHELF_MONTHS = 3
-SHELF_MONTHS_RANGE   = (1, 60)
+# A product's own shelf life overrides the configurable default in settings
+SHELF_MONTHS_RANGE = SHELF_MONTHS_LIMITS
 
 # Hotel names travel as one bare word: the 6th comma field of a Telegram
 # print line, and the last argument of /removeproduct.
@@ -229,7 +230,7 @@ def list_products(hotel: str = None) -> str:
             lines.append(f"  • {product} → {_entry_weight(val)}{shelf_txt}")
         lines.append(
             "\n_Unlisted products need a weight in the message. "
-            f"Shelf life defaults to {DEFAULT_SHELF_MONTHS} months._"
+            f"Shelf life defaults to {get_default_shelf_months()} months._"
         )
         return "\n".join(lines)
 

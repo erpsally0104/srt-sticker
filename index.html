@@ -1026,7 +1026,7 @@ kbd {
               onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();addProductHandler();}"/>
             <button class="btn-small" onclick="addProductHandler()">+ Add</button>
           </div>
-          <div class="field-note">Shelf life sets Use By = Packed + that many months. Leave blank for 3 months.</div>
+          <div class="field-note" id="shelfDefaultNote">Shelf life sets Use By = Packed + that many months.</div>
         </div>
       </div>
     </div>
@@ -1131,6 +1131,13 @@ kbd {
           </div>
         </div>
         <div id="doubleWidthPreview" class="print-summary" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Dates</div>
+        <label class="form-label" for="setDefaultShelf">Default shelf life (months)</label>
+        <input type="number" id="setDefaultShelf" min="1" max="60" step="1" inputmode="numeric" pattern="[0-9]*"/>
+        <div class="field-note">Use By = Packed Date + this many months, for every product that has no shelf life of its own. Set a product's own shelf life on the Products tab.</div>
       </div>
 
       <div class="card">
@@ -1265,23 +1272,29 @@ const getRefreshToken = () => localStorage.getItem('refresh_token');
 const getUsername     = () => localStorage.getItem('username') || '';
 const getIsAdmin      = () => localStorage.getItem('is_admin') === 'true';
 
+// 502/503/504 don't come from server.py: ngrok sends them itself when the
+// tunnel is up but nothing is listening behind it (server.py not running).
+const isGatewayError = res => res.status === 502 || res.status === 503 || res.status === 504;
+
 // fetch() that also records whether the server answered, for the banner.
-// When the tunnel is down, ngrok's error page carries no CORS headers, so
-// that also lands in the catch as a network error.
+// A network error (offline, or an ngrok error page without CORS headers)
+// and a gateway error both mean server.py couldn't be reached.
 async function netFetch(url, opts) {
+  let res;
   try {
-    const res = await fetch(url, opts);
-    setServerReachable(true);
-    return res;
+    res = await fetch(url, opts);
   } catch (e) {
     setServerReachable(false);
     throw e;
   }
+  setServerReachable(!isGatewayError(res));
+  return res;
 }
 
 // → true (new tokens), false (refresh token rejected: log in again), or
-// 'offline' (no answer). Offline must not log anyone out: opening the app
-// without signal used to clear the tokens and show the login screen.
+// 'offline' (server not reachable). Only a 401 means the session is over;
+// anything else must not log anyone out. A server that was down used to
+// clear the tokens and show the login screen, where logging in failed too.
 async function refreshTokens() {
   const rt = getRefreshToken();
   if (!rt) return false;
@@ -1293,11 +1306,12 @@ async function refreshTokens() {
       body: JSON.stringify({refresh_token: rt})
     });
   } catch { return 'offline'; }
+  if (res.status === 401) { clearTokens(); return false; }
+  if (!res.ok) return 'offline';
   try {
-    if (!res.ok) { clearTokens(); return false; }
     saveTokens(await res.json());
     return true;
-  } catch { return false; }
+  } catch { return 'offline'; }
 }
 
 async function apiFetch(url, opts={}) {
@@ -1352,6 +1366,11 @@ async function doLogin() {
       headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning':'true'},
       body: JSON.stringify({username:user, password:pass})
     });
+    if (isGatewayError(res)) {
+      err.textContent = 'The print server is not running. Start run.bat on the shop computer, then try again.';
+      err.style.display = 'block';
+      return;
+    }
     const data = await res.json();
     if (!res.ok) { err.textContent = data.error||'Login failed'; err.style.display='block'; }
     else { saveTokens(data); showApp(); initApp(); }
@@ -1495,7 +1514,7 @@ function updateConnUI() {
   if (offline) {
     banner.textContent = "📵 You're offline. Your items are kept on this device — printing works again once you're back online.";
   } else if (!serverReachable) {
-    banner.innerHTML = "⚠️ Can't reach the print server. Your items are kept on this device."
+    banner.innerHTML = "⚠️ Can't reach the print server — check run.bat is running on the shop computer. Your items are kept on this device."
       + '<button type="button" class="link-btn" onclick="retryConnection()">Try again</button>';
   }
   banner.hidden = !offline && serverReachable;
@@ -1620,6 +1639,7 @@ const GEOMETRY_FIELDS = {
   setSingleVGap: 'single_vgap_mm', setDoubleVGap: 'double_vgap_mm',
   setDoubleGap: 'double_gap_mm', setDoubleMargin: 'double_margin_mm',
 };
+const DATE_FIELDS = { setDefaultShelf: 'default_shelf_months' };
 const LABEL_TEXT_FIELDS = {
   setFssaiNumber: 'fssai_number', setCompanyPrefix: 'company_prefix',
   setCompanyName: 'company_name', setCompanyAddress: 'company_address',
@@ -1630,6 +1650,11 @@ function applySettingsToForm(s) {
   savedSettings = s;
   const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
   Object.entries(GEOMETRY_FIELDS).forEach(([id, key]) => set(id, s[key]));
+  Object.entries(DATE_FIELDS).forEach(([id, key]) => set(id, s[key]));
+  if (s.default_shelf_months) defaultShelfMonths = s.default_shelf_months;
+  updateShelfDefaultNote();
+  refreshUseBy();                                    // Use By follows the new default
+  if (isTabActive('products')) renderProducts();     // so does "(default)" in the list
   // Label content fields — all mandatory declarations, editable by the admin only
   const admin = getIsAdmin();
   Object.entries(LABEL_TEXT_FIELDS).forEach(([id, key]) => {
@@ -1644,13 +1669,20 @@ function applySettingsToForm(s) {
   updateDoubleWidthPreview();
 }
 
+function updateShelfDefaultNote() {
+  const el = document.getElementById('shelfDefaultNote');
+  if (el) el.textContent = `Shelf life sets Use By = Packed + that many months. Leave blank to use the default of ${defaultShelfMonths} months, set in Settings.`;
+}
+
 function settingsDirty() {
   if (!savedSettings) return false;
   const geoChanged = Object.entries(GEOMETRY_FIELDS).some(([id, key]) =>
     parseFloat(document.getElementById(id).value) !== parseFloat(savedSettings[key]));
   const textChanged = Object.entries(LABEL_TEXT_FIELDS).some(([id, key]) =>
     document.getElementById(id).value.trim() !== String(savedSettings[key] ?? ''));
-  return geoChanged || textChanged;
+  const dateChanged = Object.entries(DATE_FIELDS).some(([id, key]) =>
+    parseInt(document.getElementById(id).value, 10) !== parseInt(savedSettings[key], 10));
+  return geoChanged || textChanged || dateChanged;
 }
 
 function updateDoubleWidthPreview() {
@@ -1669,6 +1701,9 @@ async function saveGeometry() {
   const payload = {};
   Object.entries(GEOMETRY_FIELDS).forEach(([id, key]) => { payload[key] = parseFloat(document.getElementById(id).value); });
   if (Object.values(payload).some(v => isNaN(v))) { showToast('Fill all geometry fields with numbers'); return false; }
+  const shelf = parseInt(document.getElementById('setDefaultShelf').value, 10);
+  if (!Number.isInteger(shelf) || shelf < 1 || shelf > 60) { showToast('Default shelf life must be 1–60 months'); return false; }
+  payload.default_shelf_months = shelf;
   // Only the admin may change the label content, so nobody else sends it
   if (getIsAdmin()) {
     Object.entries(LABEL_TEXT_FIELDS).forEach(([id, key]) => { payload[key] = document.getElementById(id).value.trim(); });
@@ -1784,7 +1819,9 @@ async function onRollTypeChange() {
 // Use By normally follows each product's shelf life (Packed + N months), so
 // a form holding a 3-month and a 6-month product prints each correctly. Once
 // someone picks a Use By by hand, that one date applies to every item.
-const DEFAULT_SHELF_MONTHS = 3;
+// Fallback shelf life for products that set none. Comes from Settings
+// (default_shelf_months); this value only applies until those load.
+let defaultShelfMonths = 2;
 let useByAuto    = true;   // false once Use By was set by hand
 let packedCustom = false;  // Packed Date picked by hand / from history, not "today"
 let datesDay     = '';     // the day (YYYY-MM-DD) the dates were last checked against
@@ -1820,7 +1857,7 @@ function productEntry(name) {
   const n = String(name || '').trim().toUpperCase();
   return n ? products.find(p => p.name.toUpperCase() === n) : undefined;
 }
-const shelfMonthsFor = name => productEntry(name)?.shelf_months || DEFAULT_SHELF_MONTHS;
+const shelfMonthsFor = name => productEntry(name)?.shelf_months || defaultShelfMonths;
 
 function setDefaultDates() {
   document.getElementById('packedDate').value = todayStr();
@@ -1835,6 +1872,7 @@ function refreshUseBy() {
   const packed = parseInputDate(document.getElementById('packedDate')?.value);
   const bbEl   = document.getElementById('bestBeforeDate');
   const shelves = new Set();
+  let anyOwnShelf = false;   // did any product bring its own shelf life?
   document.querySelectorAll('.job-card').forEach(row => {
     const id   = row.id.replace('row-','');
     const meta = document.getElementById(`meta-${id}`);
@@ -1842,6 +1880,7 @@ function refreshUseBy() {
     if (!meta) return;
     if (!name || !packed) { meta.textContent = ''; return; }
     const shelf  = shelfMonthsFor(name);
+    if (productEntry(name)?.shelf_months) anyOwnShelf = true;
     const expiry = useByAuto ? addMonths(packed, shelf) : parseInputDate(bbEl.value);
     if (useByAuto) shelves.add(shelf);
     if (!expiry) { meta.textContent = ''; return; }
@@ -1851,7 +1890,7 @@ function refreshUseBy() {
   if (useByAuto && packed) {
     // One shared shelf life shows as a date; mixed ones leave the box empty
     // and each item shows its own.
-    const only = shelves.size ? [...shelves][0] : DEFAULT_SHELF_MONTHS;
+    const only = shelves.size ? [...shelves][0] : defaultShelfMonths;
     bbEl.value = shelves.size > 1 ? '' : formatDateInput(addMonths(packed, only));
   }
   const note = document.getElementById('useByNote');
@@ -1862,8 +1901,9 @@ function refreshUseBy() {
   } else if (shelves.size > 1) {
     note.textContent = 'Use By differs by product — each item shows its own dates.';
   } else {
-    const only = shelves.size ? [...shelves][0] : DEFAULT_SHELF_MONTHS;
-    note.textContent = `Use By = Packed + ${only} months (product shelf life).`;
+    const only = shelves.size ? [...shelves][0] : defaultShelfMonths;
+    note.textContent = `Use By = Packed + ${only} months `
+      + (anyOwnShelf ? '(product shelf life).' : '(default shelf life, set in Settings).');
   }
 }
 
@@ -2794,7 +2834,7 @@ async function postJson(path, body) {
 let shownProducts = [];   // the list rendered on the Products tab, indexed by row
 
 function shelfText(p) {
-  return p.shelf_months ? `${p.shelf_months}-month shelf life` : `${DEFAULT_SHELF_MONTHS}-month shelf life (default)`;
+  return p.shelf_months ? `${p.shelf_months}-month shelf life` : `${defaultShelfMonths}-month shelf life (default)`;
 }
 
 function renderProducts() {
@@ -2830,7 +2870,7 @@ function editProduct(idx) {
       autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="done" onkeydown="onProductEditKey(event, ${idx})"/>
     <input type="number" id="pedit-shelf-${idx}" value="${p.shelf_months || ''}" placeholder="mo" min="1" max="60"
       inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" onkeydown="onProductEditKey(event, ${idx})"
-      aria-label="Shelf life in months (blank for ${DEFAULT_SHELF_MONTHS})" style="max-width:62px;"/>
+      aria-label="Shelf life in months (blank for ${defaultShelfMonths})" style="max-width:62px;"/>
     <button class="btn-small" onclick="saveProduct(${idx})">Save</button>
     <button class="product-edit-cancel" onclick="renderProducts()" aria-label="Cancel edit">✕</button>
   `;

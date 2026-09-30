@@ -4,7 +4,8 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
 
-from product_manager import find_product, DEFAULT_SHELF_MONTHS
+from product_manager import find_product
+from settings_manager import get_default_shelf_months
 
 
 @dataclass
@@ -224,7 +225,7 @@ def parse_message(
         req_hotel = parts[5].strip().lower()
 
     listed = find_product(product, req_hotel)
-    shelf_months = (listed[1] if listed else None) or DEFAULT_SHELF_MONTHS
+    shelf_months = (listed[1] if listed else None) or get_default_shelf_months()
 
     if weight is None:
         if not listed or not listed[0]:
