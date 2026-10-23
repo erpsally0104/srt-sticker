@@ -19,7 +19,7 @@ from parser import parse_message
 from printer import print_label, get_printer_status
 from print_queue import get_queue
 from logger import log_print
-from settings_manager import get_roll_type, set_roll_type
+from settings_manager import get_roll_type, set_roll_type, get_settings
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -105,7 +105,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`FSSAI number ;; f 5`\n\n"
         "*General:*\n"
         "/status — Check printer status\n"
-        "/rolltype — View/set roll type (single or 2-up)\n"
+        "/rolltype — View/set the label type (single, 2-up or large)\n"
         "/queue — View print queue\n"
         "/cancel ID — Cancel a queued job\n"
         "/cancelall — Cancel all queued jobs\n"
@@ -141,24 +141,29 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────────
-# /rolltype [single|double]
-# View or set the loaded roll type (which sticker roll is in the printer)
+# /rolltype [single|double|large]
+# View or set the default label type — the one every Telegram print uses
+# (and the web UI starts on)
 # ─────────────────────────────────────────────────────────
 async def cmd_rolltype(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_auth(update):
         await update.message.reply_text("⛔ You are not authorized.")
         return
 
+    s = get_settings()
+    small = f"{s.get('label_width_mm', 50)}×{s.get('label_height_mm', 40)}mm"
+    large = f"{s.get('large_width_mm', 75)}×{s.get('large_height_mm', 50)}mm"
     labels = {
-        "single": "Single (one 50×40mm label per row)",
-        "double": "Double 2-up (two 50×40mm labels side by side)",
+        "single": f"Single (one {small} label per row)",
+        "double": f"Double 2-up (two {small} labels side by side)",
+        "large":  f"Large (one {large} {s.get('brand_name', 'CRYSTAL CLEAR')} label per row)",
     }
 
     if not context.args:
         current = get_roll_type()
         await update.message.reply_text(
-            f"🧻 *Roll Type:* {labels.get(current, current)}\n\n"
-            "Change it with:\n`/rolltype single`\n`/rolltype double`",
+            f"🧻 *Label Type:* {labels.get(current, current)}\n\n"
+            "Change it with:\n`/rolltype single`\n`/rolltype double`\n`/rolltype large`",
             parse_mode="Markdown"
         )
         return
@@ -166,13 +171,13 @@ async def cmd_rolltype(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = set_roll_type(context.args[0])
     if result is None:
         await update.message.reply_text(
-            "⚠️ Invalid roll type. Use `/rolltype single` or `/rolltype double`.",
+            "⚠️ Invalid label type. Use `/rolltype single`, `/rolltype double` or `/rolltype large`.",
             parse_mode="Markdown"
         )
         return
 
     await update.message.reply_text(
-        f"✅ Roll type set to *{labels.get(result, result)}*.",
+        f"✅ Label type set to *{labels.get(result, result)}*.",
         parse_mode="Markdown"
     )
 
@@ -409,8 +414,9 @@ async def _execute_print(requests, update_or_query, context):
             )
         else:
             hotel_tag = f" [{req.hotel}]" if req.hotel != "general" else ""
+            typed_tag = f" _(typed {req.requested_as})_" if req.requested_as else ""
             queued_lines.append(
-                f"📋 *{req.product}*{hotel_tag} — {req.quantity} sticker(s) | {req.weight} | Batch: {q_job.batch_no} | Job: `{q_job.id}`"
+                f"📋 *{req.product}*{typed_tag}{hotel_tag} — {req.quantity} sticker(s) | {req.weight} | Batch: {q_job.batch_no} | Job: `{q_job.id}`"
             )
 
     if len(requests) == 1:
@@ -435,10 +441,13 @@ async def _execute_print(requests, update_or_query, context):
             job_id = queued_lines[0].split("Job: `")[1].rstrip("`")
             batch_no = queued_lines[0].split("Batch: ")[1].split(" |")[0]
             hotel_line = f"🏨 Hotel      : {req.hotel}\n" if req.hotel != "general" else ""
+            typed = f" (typed {req.requested_as})" if req.requested_as else ""
+            allergen_line = f"⚠️ Contains   : {req.allergens}\n" if req.allergens else ""
             await send(
                 f"🖨️ *Queued {req.quantity} sticker(s)*\n\n"
-                f"📦 Product    : {req.product}\n"
+                f"📦 Product    : {req.product}{typed}\n"
                 f"⚖️ Weight     : {req.weight}\n"
+                f"{allergen_line}"
                 f"{hotel_line}"
                 f"📅 Packed On  : {req.packed_on}\n"
                 f"📅 Use By: {req.best_before}\n"

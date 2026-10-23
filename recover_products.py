@@ -25,6 +25,8 @@ import sqlite3
 import subprocess
 import sys
 
+from product_catalog import norm
+
 HERE          = os.path.dirname(os.path.abspath(__file__))
 PRODUCTS_FILE = os.path.join(HERE, "products.json")
 DB_PATH       = os.path.join(HERE, "users.db")
@@ -100,6 +102,16 @@ def si(weight):
     return weight.strip()
 
 
+def known_names(prods):
+    """Normalised names and other names of one hotel's products."""
+    out = set()
+    for k, v in prods.items():
+        out.add(norm(k))
+        if isinstance(v, dict):
+            out.update(norm(a) for a in v.get("aliases", []))
+    return out
+
+
 def main():
     print("Rebuilding products.json")
     print("=" * 58)
@@ -125,11 +137,14 @@ def main():
     else:
         n = sum(len(v) for v in committed.values() if isinstance(v, dict))
         print("2. git HEAD              : %d products" % n)
+        # The committed copy may predate the English names: its PHALLI is the
+        # live list's PEANUTS, already there under another name.
+        known_live = {h: known_names(p) for h, p in merged.items()}
         for hotel, prods in committed.items():
             if isinstance(prods, dict):
                 for k, v in prods.items():
                     key = (hotel, k.upper())
-                    if key not in origin:
+                    if key not in origin and norm(k) not in known_live.get(hotel, set()):
                         merged.setdefault(hotel, {})[k.upper()] = v
                         origin[key] = "from git"
 
@@ -137,8 +152,11 @@ def main():
     print("3. print_logs            : %d distinct products printed" % len(logged))
 
     restored, skipped = [], []
+    # The log keeps the names products printed under before they were
+    # renamed to English (PHALLI). Those are other names now, not products.
+    known = known_names(merged.get(DEFAULT_HOTEL, {}))
     for product, (weight, times) in sorted(logged.items()):
-        if (DEFAULT_HOTEL, product) in origin:
+        if (DEFAULT_HOTEL, product) in origin or norm(product) in known:
             continue
         if times >= MIN_PRINTS:
             merged.setdefault(DEFAULT_HOTEL, {})[product] = si(weight)

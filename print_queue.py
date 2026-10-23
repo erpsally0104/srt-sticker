@@ -52,6 +52,7 @@ class QueueJob:
             "best_before": self.req.best_before,
             "hotel": self.req.hotel,
             "label_type": self.req.label_type,
+            "roll_type": self.req.roll_type,
             "batch_no": self.batch_no,
             "username": self.username,
             "source": self.source,
@@ -72,8 +73,22 @@ class PrintQueue:
         self._worker = threading.Thread(target=self._process_loop, daemon=True)
         self._worker.start()
 
+    @staticmethod
+    def _fix_roll(reqs):
+        """
+        Give every request without a label type the default one, now. A job
+        prints in the size it was queued as, even if the default changes
+        while it waits.
+        """
+        default = None
+        for req in reqs:
+            if not req.roll_type:
+                default = default or get_roll_type()
+                req.roll_type = default
+
     def add(self, req: PrintRequest, username: str, source: str = "ui") -> QueueJob:
         """Add a print request to the queue. Returns the created job."""
+        self._fix_roll([req])
         batch_no = get_next_batch_number() if req.label_type == "product" else ""
         job = QueueJob(
             id=uuid.uuid4().hex[:8],
@@ -93,6 +108,7 @@ class PrintQueue:
         multi-line submission is queued together and paired together in 2-up mode.
         Returns the list of created jobs in the same order as `reqs`.
         """
+        self._fix_roll(reqs)
         jobs = []
         with self._lock:
             for req in reqs:
@@ -117,6 +133,7 @@ class PrintQueue:
         goes, so it neither uses up one of the day's lot numbers nor ends up
         in the print history.
         """
+        self._fix_roll([req])
         job = QueueJob(
             id=uuid.uuid4().hex[:8],
             req=req,
@@ -197,16 +214,17 @@ class PrintQueue:
 
     def _process_loop(self):
         """
-        Background worker.
+        Background worker. Jobs print in FIFO order, each in its own label type.
 
-        In 'single' mode each job is printed on its own (one label per row,
-        using the printer's native copy count). In 'double' mode all currently
-        queued labels are flattened into a single FIFO sequence and printed two
-        side by side per row; an odd final label prints alone (right column blank).
+        A 'single' or 'large' job prints on its own (one label per row, using
+        the printer's native copy count). A 'double' job prints together with
+        every 'double' job queued straight after it: their labels are
+        flattened into one sequence and printed two side by side per row; an
+        odd final label prints alone (right column blank).
 
         The body is wrapped because this runs on a daemon thread with nothing
-        above it to catch anything. get_roll_type() reads settings.json and
-        raises PermissionError when the sibling process holds the file open;
+        above it to catch anything. Rendering reads settings.json and raises
+        PermissionError when the sibling process holds the file open;
         _log_job writes to users.db and raises OperationalError when that lock
         is contended. Either one, unhandled, killed the worker for good: jobs
         kept queueing, the UI spinner turned forever, and nothing printed again
@@ -214,10 +232,13 @@ class PrintQueue:
         """
         while True:
             try:
-                if get_roll_type() == "double":
+                job = self._next_queued()
+                if job is None:
+                    did_work = False
+                elif job.req.roll_type == "double":
                     did_work = self._process_double_batch()
                 else:
-                    did_work = self._process_single_next()
+                    did_work = self._process_single(job)
                 if not did_work:
                     time.sleep(0.3)
             except Exception:
@@ -236,15 +257,16 @@ class PrintQueue:
                 batch_no=job.batch_no,
                 packed_on=job.req.packed_on,
                 best_before=job.req.best_before,
+                as_typed=job.req.as_typed,
+                roll_type=job.req.roll_type,
             )
 
-    def _process_single_next(self) -> bool:
-        """Print the next queued job on a single-label-per-row roll."""
-        job = self._next_queued()
-        if job is None:
-            return False
-
+    def _process_single(self, job) -> bool:
+        """Print one job on a one-label-per-row roll (single or large)."""
         with self._lock:
+            # Cancelled since the loop picked it: go round again
+            if job.status != "queued":
+                return True
             job.status = "printing"
 
         try:
@@ -274,10 +296,17 @@ class PrintQueue:
         return True
 
     def _process_double_batch(self) -> bool:
-        """Print all currently-queued labels 2-up (side by side)."""
-        # Grab all queued jobs (FIFO) and mark them printing.
+        """Print the run of 2-up jobs at the head of the queue, side by side."""
+        # Grab queued jobs (FIFO) up to the first one of another label type,
+        # and mark them printing.
         with self._lock:
-            jobs = [j for j in self._jobs.values() if j.status == "queued"]
+            jobs = []
+            for j in self._jobs.values():
+                if j.status != "queued":
+                    continue
+                if j.req.roll_type != "double":
+                    break
+                jobs.append(j)
             for j in jobs:
                 j.status = "printing"
 

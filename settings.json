@@ -9,5 +9,12 @@
   "fssai_number": "13620011000563",
   "company_prefix": "Packed & Marketed by",
   "company_name": "SRI RADHE TRADERS",
-  "company_address": "15-7-173/A, BEGUM BAZAR, HYDERABAD, TELANGANA - 500012"
+  "company_address": "15-7-173/A, BEGUM BAZAR, HYDERABAD, TELANGANA - 500012",
+  "default_shelf_months": 2,
+  "large_width_mm": 75,
+  "large_height_mm": 50,
+  "large_vgap_mm": 2,
+  "brand_name": "CRYSTAL CLEAR",
+  "brand_mark": "\u00ae",
+  "customer_care": "radhetraders.dk@gmail.com"
 }
