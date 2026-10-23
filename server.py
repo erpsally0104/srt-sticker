@@ -16,11 +16,13 @@ from print_queue import get_queue
 from product_manager import (
     add_product, remove_product, update_product, add_hotel, list_hotels,
     hotel_entries, all_hotel_entries, validate_shelf_months,
+    clean_aliases, clean_allergens, product_names,
 )
 from settings_manager import (
-    get_settings, get_roll_type, set_roll_type, set_geometry, GEOMETRY_DEFAULTS,
+    get_settings, get_roll_type, set_roll_type, normalize_roll_type, set_geometry, GEOMETRY_DEFAULTS,
     get_label_text_settings, set_label_text_settings, LABEL_TEXT_DEFAULTS,
     get_default_shelf_months, set_date_settings, DATE_DEFAULTS,
+    set_brand_settings, BRAND_DEFAULTS,
 )
 from templates_manager import list_templates, save_template, remove_template
 
@@ -163,10 +165,19 @@ def update_app_settings():
             return jsonify({"error": "Only the admin can change the FSSAI number, company name and address"}), 403
         text_updates = {}
 
-    # Roll type (optional)
+    # The brand and its (R) are a legal claim too (Trade Marks Act s.107),
+    # so they follow the same rule.
+    brand_updates = {k: body[k] for k in body if k in BRAND_DEFAULTS}
+    if brand_updates and not is_admin():
+        current = get_settings()
+        if any(str(v).strip() != current.get(k, "") for k, v in brand_updates.items()):
+            return jsonify({"error": "Only the admin can change the brand and customer care details"}), 403
+        brand_updates = {}
+
+    # Default label type (optional)
     if "roll_type" in body:
         if set_roll_type(body.get("roll_type")) is None:
-            return jsonify({"error": "Invalid roll_type (use 'single' or 'double')"}), 400
+            return jsonify({"error": "Invalid roll_type (use 'single', 'double' or 'large')"}), 400
 
     # Print geometry (optional)
     geo_updates = {k: body[k] for k in body if k in GEOMETRY_DEFAULTS}
@@ -185,6 +196,12 @@ def update_app_settings():
     # Label text settings (FSSAI / company line) (optional)
     if text_updates:
         applied, err = set_label_text_settings(text_updates)
+        if err:
+            return jsonify({"error": err}), 400
+
+    # Brand settings for the large label (optional)
+    if brand_updates:
+        applied, err = set_brand_settings(brand_updates)
         if err:
             return jsonify({"error": err}), 400
 
@@ -210,6 +227,23 @@ def _shelf_from_body(body):
     return validate_shelf_months(body.get("shelf_months"))
 
 
+def _names_from_body(body):
+    """
+    ({"aliases": [...], "allergens": [...]}, error) for whichever of the two
+    the request sends. One it leaves out stays as the product has it.
+    """
+    fields = {}
+    if "aliases" in body:
+        fields["aliases"], err = clean_aliases(body.get("aliases"))
+        if err:
+            return None, err
+    if "allergens" in body:
+        fields["allergens"], err = clean_allergens(body.get("allergens"))
+        if err:
+            return None, err
+    return fields, None
+
+
 @app.route("/api/products/add", methods=["POST"])
 @require_auth
 def api_add_product():
@@ -219,13 +253,16 @@ def api_add_product():
     hotel   = (body.get("hotel") or "general").strip().lower()
     if not product or not weight:
         return jsonify({"error": "Product and weight required"}), 400
+    fields, err = _names_from_body(body)
+    if err:
+        return jsonify({"error": err}), 400
     if "shelf_months" in body:
-        shelf, err = _shelf_from_body(body)
+        fields["shelf_months"], err = _shelf_from_body(body)
         if err:
             return jsonify({"error": err}), 400
-        result = add_product(product, weight, hotel, shelf_months=shelf)
-    else:
-        result = add_product(product, weight, hotel)
+    result = add_product(product, weight, hotel, **fields)
+    if result.startswith("⚠️"):
+        return jsonify({"error": result.lstrip("⚠️ ")}), 400
     return jsonify({"message": result})
 
 
@@ -242,7 +279,10 @@ def api_update_product():
     shelf, err = _shelf_from_body(body)
     if err:
         return jsonify({"error": err}), 400
-    ok, message = update_product(old, product, weight, hotel, shelf_months=shelf)
+    fields, err = _names_from_body(body)
+    if err:
+        return jsonify({"error": err}), 400
+    ok, message = update_product(old, product, weight, hotel, shelf_months=shelf, **fields)
     if not ok:
         return jsonify({"error": message}), 400
     return jsonify({"message": message})
@@ -297,6 +337,20 @@ def api_remove_template():
 
 
 # ── Printing ──────────────────────────────────────
+def _roll_from_body(body):
+    """
+    (label type, error) from an optional roll_type field. An absent or
+    blank one gives "", which the queue and renderer take as the default.
+    """
+    raw = body.get("roll_type")
+    if raw is None or not str(raw).strip():
+        return "", None
+    roll = normalize_roll_type(str(raw))
+    if roll is None:
+        return None, "Invalid roll_type (use 'single', 'double' or 'large')"
+    return roll, None
+
+
 @app.route("/api/print", methods=["POST"])
 @require_auth
 def print_labels():
@@ -307,6 +361,9 @@ def print_labels():
     best_before = (body.get("best_before") or "").strip() or None
     if not jobs:
         return jsonify({"error": "No jobs provided"}), 400
+    roll, err = _roll_from_body(body)
+    if err:
+        return jsonify({"error": err}), 400
 
     results  = []
     username = request.username
@@ -320,10 +377,12 @@ def print_labels():
         line = job.get("line", "").strip()
         if not line:
             continue
-        req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before)
+        req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before,
+                                   as_typed=bool(job.get("as_typed")))
         if error:
             entries.append(("fail", line, error))
         else:
+            req.roll_type = roll
             entries.append(("ok", line, req))
             valid_reqs.append(req)
 
@@ -347,6 +406,9 @@ def print_labels():
             "packed_on":   req.packed_on,
             "best_before": req.best_before,
             "batch_no":    q_job.batch_no,
+            "allergens":   req.allergens,
+            "requested_as": req.requested_as,
+            "as_typed":    req.as_typed,
             "error":       None,
         })
 
@@ -364,9 +426,14 @@ def preview_label():
     best_before = (body.get("best_before") or "").strip() or None
     if not line:
         return jsonify({"error": "Nothing to preview"}), 400
-    req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before)
+    roll, err = _roll_from_body(body)
+    if err:
+        return jsonify({"error": err}), 400
+    req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before,
+                               as_typed=bool(body.get("as_typed")))
     if error:
         return jsonify({"error": error}), 400
+    req.roll_type = roll
     # A preview must not use up one of the day's lot numbers, so the
     # sequence digits are left as placeholders.
     batch_no = f"SRT{datetime.now():%d%m%y}xxx" if req.label_type == "product" else ""
@@ -383,13 +450,18 @@ def preview_label():
 @app.route("/api/test-print", methods=["POST"])
 @require_auth
 def test_print():
-    """Queue a calibration label using the saved settings."""
+    """Queue a calibration label using the saved settings, on the default label type unless one is given."""
+    body = request.get_json(silent=True) or {}
+    roll, err = _roll_from_body(body)
+    if err:
+        return jsonify({"error": err}), 400
+    roll = roll or get_roll_type()
     today = datetime.now()
     packed, expiry = format_date_pair(today, today + relativedelta(months=get_default_shelf_months()))
     # Two on a 2-up roll, so both columns can be checked for alignment
-    qty = 2 if get_roll_type() == "double" else 1
+    qty = 2 if roll == "double" else 1
     req = PrintRequest(product="TEST LABEL", weight="1 kg", quantity=qty,
-                       packed_on=packed, best_before=expiry)
+                       packed_on=packed, best_before=expiry, roll_type=roll)
     job = get_queue().add_test(req, username=request.username)
     return jsonify({"job_id": job.id, "quantity": qty})
 
@@ -479,9 +551,13 @@ def get_print_logs():
     except ValueError:
         return jsonify({"error": "Invalid limit, offset or date"}), 400
 
+    # An old name finds the labels printed under the English one, and the
+    # English name the ones printed before the switch (PHALLI <-> PEANUTS)
+    also = product_names(filter_product) if filter_product else []
+
     # One extra row tells us whether there is another page
     logs = get_logs(username, admin, limit + 1, filter_user, filter_product,
-                    since_utc=since, until_utc=until, offset=offset)
+                    since_utc=since, until_utc=until, offset=offset, also_products=also)
     has_more = len(logs) > limit
     logs = logs[:limit]
     usernames = get_all_usernames() if admin else [username]

@@ -3,16 +3,25 @@ import os
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
 
-VALID_ROLL_TYPES = {"single", "double"}
+# Label types, one per roll the printer can hold:
+#   single — one small label per row
+#   double — two small labels side by side (2-up)
+#   large  — one 75 x 50 mm CRYSTAL CLEAR label per row
+# Every print job carries its own type. The "roll_type" setting is only the
+# default: what the web UI starts on and what Telegram always prints.
+VALID_ROLL_TYPES = {"single", "double", "large"}
 
 # ── Print geometry (all values in mm) ─────────
 GEOMETRY_DEFAULTS = {
-    "label_width_mm":   50,   # sticker width (both rolls)
-    "label_height_mm":  40,   # sticker height (both rolls)
+    "label_width_mm":   50,   # small sticker width (single and 2-up)
+    "label_height_mm":  40,   # small sticker height (single and 2-up)
     "single_vgap_mm":   2,    # vertical gap between labels on the 1-up roll
     "double_vgap_mm":   2,    # vertical gap between rows on the 2-up roll
     "double_gap_mm":    1,    # horizontal gap between the two stickers (2-up)
     "double_margin_mm": 2,    # blank margin on each outer edge (2-up)
+    "large_width_mm":   75,   # large (CRYSTAL CLEAR) sticker width
+    "large_height_mm":  50,   # large (CRYSTAL CLEAR) sticker height
+    "large_vgap_mm":    2,    # vertical gap between labels on the large roll
 }
 
 # (min, max) allowed range for each geometry field, in mm
@@ -23,6 +32,11 @@ GEOMETRY_LIMITS = {
     "double_vgap_mm":   (0, 20),
     "double_gap_mm":    (0, 30),
     "double_margin_mm": (0, 30),
+    # The large layout is drawn for 75 x 50: these are the sizes it still
+    # fits (below 49 mm tall the footer lines run into each other)
+    "large_width_mm":   (70, 100),
+    "large_height_mm":  (49, 60),
+    "large_vgap_mm":    (0, 20),
 }
 
 # ── Label text defaults ────────────────────────
@@ -37,6 +51,20 @@ LABEL_TEXT_DEFAULTS = {
     # Reg 5(6)(a) requires the COMPLETE address, door number included.
     "company_address": "15-7-173/A, BEGUM BAZAR, HYDERABAD, TELANGANA - 500012",
 }
+
+# ── Brand (large label only) ───────────────────
+# The registered trade mark printed across the top of the 75 x 50 label.
+# The mark is a setting, not hard-coded: Trade Marks Act s.107 makes it an
+# offence to show (R) on a mark that is not registered, or on goods outside
+# the classes it is registered for — switch to (TM) or none if that applies.
+BRAND_DEFAULTS = {
+    "brand_name":    "CRYSTAL CLEAR",
+    "brand_mark":    "®",
+    # Printed as "Customer Care: <this>". Optional — blank leaves the line off.
+    "customer_care": "radhetraders.dk@gmail.com",
+}
+
+VALID_BRAND_MARKS = {"®", "™", ""}   # (R), (TM), none
 
 # ── Date defaults ──────────────────────────────
 # Use By = Packed + this many months for any product that does not set its
@@ -55,10 +83,11 @@ SHELF_MONTHS_LIMITS = (1, 60)
 RETIRED_KEYS = ("show_fssai", "show_company_line", "company_line")
 
 DEFAULT_SETTINGS = {
-    "roll_type": "single",  # "single" (1 label per row) | "double" (2 labels side by side)
+    "roll_type": "single",  # default label type: "single" | "double" | "large"
     **GEOMETRY_DEFAULTS,
     **DATE_DEFAULTS,
     **LABEL_TEXT_DEFAULTS,
+    **BRAND_DEFAULTS,
 }
 
 
@@ -111,19 +140,24 @@ def get_settings() -> dict:
     return _load()
 
 
+def normalize_roll_type(value):
+    """'single' / 'double' / 'large' from any casing, or None if it is not one of them."""
+    value = (value or "").strip().lower()
+    return value if value in VALID_ROLL_TYPES else None
+
+
 def get_roll_type() -> str:
-    """Returns the currently loaded roll type: 'single' or 'double'."""
-    roll_type = _load().get("roll_type", "single")
-    return roll_type if roll_type in VALID_ROLL_TYPES else "single"
+    """Returns the default label type: 'single', 'double' or 'large'."""
+    return normalize_roll_type(_load().get("roll_type")) or "single"
 
 
 def set_roll_type(value: str):
     """
-    Set the roll type. Returns the normalized value on success,
+    Set the default label type. Returns the normalized value on success,
     or None if the value is invalid.
     """
-    value = (value or "").strip().lower()
-    if value not in VALID_ROLL_TYPES:
+    value = normalize_roll_type(value)
+    if value is None:
         return None
     data = _load()
     data["roll_type"] = value
@@ -229,6 +263,30 @@ def set_label_text_settings(updates: dict):
             # Every one of these is a mandatory declaration — blanking any
             # of them would print a non-compliant label.
             return None, f"{key.replace('_', ' ').title()} cannot be empty"
+        data[key] = val
+        applied[key] = val
+    _save(data)
+    return applied, None
+
+
+# ── Brand settings (large label) ──────────────────
+def set_brand_settings(updates: dict):
+    """
+    Update the brand name, its registration mark and the customer care line.
+    Returns (applied_dict, None) on success or (None, error_message) on failure.
+    """
+    if not updates:
+        return {}, None
+    data = _load()
+    applied = {}
+    for key, raw in updates.items():
+        if key not in BRAND_DEFAULTS:
+            continue
+        val = str(raw).strip()
+        if key == "brand_name" and not val:
+            return None, "Brand name cannot be empty"
+        if key == "brand_mark" and val not in VALID_BRAND_MARKS:
+            return None, "Brand mark must be ®, ™ or none"
         data[key] = val
         applied[key] = val
     _save(data)

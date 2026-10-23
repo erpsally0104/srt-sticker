@@ -4,7 +4,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
 
-from product_manager import find_product
+from product_manager import lookup_product
 from settings_manager import get_default_shelf_months
 
 
@@ -19,6 +19,13 @@ class PrintRequest:
     ingredients: str = ""        # raw ingredients text for ingredients labels
     hotel: str = "general"       # hotel/client this product belongs to
     fssai_number: str = ""       # licence number for FSSAI logo labels
+    roll_type: str = ""          # "single", "double" or "large"; "" = the default
+                                 # label type, filled in when the job is queued
+    allergens: str = ""          # "PEANUT" / "GLUTEN (WHEAT), SOY": prints as CONTAINS: ...
+    requested_as: str = ""       # what was typed, when the list knew it by another
+                                 # name (PHALLI → PEANUTS) or corrected a typo
+    as_typed: bool = False       # print the name exactly as typed: no English
+                                 # name, no other-name or typo correction
 
 
 def resolve_date(raw: str, fallback: datetime = None) -> Optional[datetime]:
@@ -153,9 +160,15 @@ def parse_message(
     hotel: str = "general",
     packed_on: str = None,
     best_before: str = None,
+    as_typed: bool = False,
 ) -> Tuple[Optional[PrintRequest], Optional[str]]:
     """
     Parses a print request message.
+
+    as_typed prints the product name exactly as typed. The product's weight,
+    shelf life and allergens still apply when the name is one the list
+    knows (its own or another of its names) — but not from a typo match,
+    which may be a different product altogether.
 
     Accepted formats:
         phalli, 10                                              → product uppercased, weight from product list
@@ -224,11 +237,21 @@ def parse_message(
     if len(parts) >= 6 and parts[5].strip():
         req_hotel = parts[5].strip().lower()
 
-    listed = find_product(product, req_hotel)
-    shelf_months = (listed[1] if listed else None) or get_default_shelf_months()
+    # Every product prints under its listed (English) name, whatever it was
+    # typed as: PHALLI, PALLI and PHALI all print PEANUTS. Unless asked to
+    # print it as typed. A spelling guess only applies when the line leaves
+    # the weight to the list: with a weight given, the product may well be
+    # one that isn't listed, and a guess would print another product's name.
+    listed = lookup_product(product, req_hotel, typos=not as_typed and weight is None)
+    requested_as = ""
+    if listed and not as_typed:
+        if listed["name"] != product:
+            requested_as = product
+        product = listed["name"]
+    shelf_months = (listed["shelf_months"] if listed else None) or get_default_shelf_months()
 
     if weight is None:
-        if not listed or not listed[0]:
+        if not listed or not listed["weight"]:
             # This used to print a made-up 500 g. The net quantity is a
             # mandatory declaration, so ask for it instead.
             where = "" if req_hotel == "general" else f" for {req_hotel}"
@@ -238,7 +261,7 @@ def parse_message(
             )
         # Normalize on the way out too — stored weights may predate the
         # switch to SI symbols.
-        weight = normalize_weight(listed[0])
+        weight = normalize_weight(listed["weight"])
 
     # Resolve dates — inline params (from bot) take priority over function args (from UI)
     today = datetime.now()
@@ -270,6 +293,9 @@ def parse_message(
         packed_on=packed_on_str,
         best_before=best_before_str,
         hotel=req_hotel,
+        allergens=", ".join(listed["allergens"]) if listed else "",
+        requested_as=requested_as,
+        as_typed=as_typed,
     ), None
 
 

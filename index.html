@@ -344,6 +344,46 @@ header {
 .add-product-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .add-product-row input { flex: 1; min-width: 120px; }
 
+/* Other names and allergens */
+.product-item-names { font-size: 0.72rem; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+.allergen-tag {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; vertical-align: 1px;
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.4px;
+  background: var(--ink); color: #fff;
+}
+.allergen-tag.inherited { background: #fff; color: var(--ink); border: 1px solid var(--ink); }
+.product-edit-box {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px; border: 2px solid var(--saffron); background: #fff;
+}
+.product-edit-box .product-edit-line { display: flex; gap: 6px; align-items: center; }
+/* 16px, like every other input here: smaller and iOS zooms in on focus */
+.product-edit-box input { flex: 1; min-width: 0; padding: 6px 8px; font-size: 16px; }
+.product-edit-heads span {
+  font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted);
+}
+.product-edit-box .btn-small { padding: 6px 10px; font-size: 0.78rem; }
+.product-edit-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-top: 2px; }
+.allergen-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.allergen-chip {
+  font-family: 'DM Sans', sans-serif; font-size: 0.68rem; font-weight: 700;
+  padding: 4px 9px; border: 1.5px solid #ccc; background: #fff; color: var(--ink);
+  cursor: pointer; touch-action: manipulation;
+}
+.allergen-chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.allergen-chip.on.inherited { background: #fff; color: var(--ink); border-style: dashed; }
+.allergen-chip-note { font-size: 0.68rem; color: var(--muted); align-self: center; }
+.allergen-count { font-size: 0.68rem; color: var(--muted); align-self: center; margin-left: auto; }
+.allergen-count.over { color: var(--red); font-weight: 700; }
+.result-typed { font-weight: 400; color: var(--muted); }
+.product-edit-box textarea {
+  width: 100%; border: 2px solid var(--border); border-radius: 0; padding: 6px 8px;
+  font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.4;
+  background: var(--paper); color: var(--ink); resize: vertical; text-transform: uppercase;
+  -webkit-appearance: none; appearance: none;
+}
+.meta-fix { color: var(--saffron-dark); font-weight: 700; }
+
 /* ── Collapsible ────────────────────────────── */
 .collapsible-toggle {
   cursor: pointer; user-select: none;
@@ -388,6 +428,8 @@ header {
 .badge-ui       { background: #e8f0fe; color: #1a56db; }
 .badge-telegram { background: #e8f5ee; color: var(--green); }
 .badge-user     { background: #fff3e0; color: #e65100; }
+.badge-roll     { background: #f1ece2; color: var(--ink); border: 1px solid #d8cfbf; }
+.badge-roll.large { background: var(--ink); color: #fff; border-color: var(--ink); }
 
 .logs-filters { display: flex; gap: 8px; margin-bottom: 0.75rem; flex-wrap: wrap; }
 .logs-filters input,
@@ -595,6 +637,13 @@ header {
   font-family: 'DM Sans', sans-serif;
 }
 .qty-preset:active { border-color: var(--saffron); color: var(--saffron-dark); background: #fff8f0; }
+.as-typed {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+  font-size: 0.75rem; font-weight: 600; color: var(--muted);
+  cursor: pointer; touch-action: manipulation; user-select: none;
+}
+.as-typed input { width: 18px; height: 18px; margin: 0; accent-color: var(--saffron); cursor: pointer; }
+.as-typed:has(input:checked) { color: var(--saffron-dark); }
 
 /* ── Focus visibility (a11y) ─────────────────── */
 .job-card-remove:focus-visible,
@@ -650,7 +699,7 @@ input:disabled, textarea:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 .combo-option-tag {
   font-size: 0.62rem; font-weight: 700; letter-spacing: 0.5px;
-  text-transform: uppercase; color: #aaa; margin-left: 6px;
+  text-transform: uppercase; color: var(--muted); margin-left: 6px;
 }
 
 /* ── Queue badge on the nav ─────────────────── */
@@ -791,6 +840,8 @@ body.kb-open .page { padding-bottom: 60vh; }
   .queue-cancel, .product-item-edit, .product-item-remove { width: 40px; height: 40px; }
   .qty-preset { min-height: 38px; padding: 6px 14px; }
   .queue-btn  { min-height: 40px; }
+  .allergen-chip { min-height: 38px; padding: 6px 12px; }
+  .product-edit-box .btn-small, .product-edit-cancel { min-height: 40px; }
   .kbd-hint   { display: none; }
 }
 
@@ -917,14 +968,13 @@ kbd {
         <div id="useByNote" class="field-note" aria-live="polite"></div>
         <div id="dateNotice" class="roll-hint" aria-live="polite"></div>
         <div style="margin-top:8px;">
-          <label class="form-label" style="margin-bottom:8px;">Roll Type (loaded in printer)</label>
-          <select id="rollType" onchange="onRollTypeChange()" aria-label="Roll type loaded in printer">
-            <option value="single" selected>🏷️ Single — one 50×40mm per row</option>
-            <option value="double">🏷️🏷️ Double 2-up — two side by side</option>
+          <label class="form-label" for="rollType" style="margin-bottom:8px;">Label Type</label>
+          <select id="rollType" onchange="onRollTypeChange()">
+            <option value="single" selected>🏷️ Single — one 50×40 mm per row</option>
+            <option value="double">🏷️🏷️ Double 2-up — two 50×40 mm side by side</option>
+            <option value="large">💎 Large — one 75×50 mm, CRYSTAL CLEAR</option>
           </select>
-          <div id="rollHint" class="roll-hint" style="display:none;">
-            🏷️🏷️ 2-up roll active: labels print two side by side. An odd final label prints alone (right column blank).
-          </div>
+          <div id="rollHint" class="roll-hint" style="display:none;" aria-live="polite"></div>
         </div>
       </div>
 
@@ -1013,6 +1063,10 @@ kbd {
         <div class="field-note" id="productsHotelNote"></div>
       </div>
       <div class="card">
+        <input type="search" id="productSearch" placeholder="Search a name or another name (e.g. PHALLI)"
+          aria-label="Search products" oninput="renderProducts()" style="margin-bottom:0.75rem;"
+          autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search"/>
+        <div class="field-note" id="productsCount" style="margin:-0.4rem 0 0.6rem;"></div>
         <div class="product-list" id="productList"></div>
         <div style="border-top:2px dashed #ddd; padding-top:0.75rem; margin-top:0.5rem;">
           <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Add New Product</div>
@@ -1097,7 +1151,17 @@ kbd {
       <div class="section-title" tabindex="-1">Print Settings</div>
 
       <div class="card">
-        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Label Size (both rolls)</div>
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Default Label Type</div>
+        <select id="setDefaultRoll" aria-label="Default label type" onchange="saveDefaultRoll()">
+          <option value="single">🏷️ Single — one 50×40 mm per row</option>
+          <option value="double">🏷️🏷️ Double 2-up — two 50×40 mm side by side</option>
+          <option value="large">💎 Large — one 75×50 mm, CRYSTAL CLEAR</option>
+        </select>
+        <div class="field-note">Saved as soon as you pick it. The Print tab starts on this type, and every Telegram print uses it.</div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Small Label Size (single &amp; 2-up)</div>
         <div style="display:flex; gap:8px;">
           <div style="flex:1;">
             <label class="form-label" for="setLabelW">Width (mm)</label>
@@ -1131,6 +1195,23 @@ kbd {
           </div>
         </div>
         <div id="doubleWidthPreview" class="print-summary" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Large Label (CRYSTAL CLEAR)</div>
+        <div style="display:flex; gap:8px;">
+          <div style="flex:1;">
+            <label class="form-label" for="setLargeW">Width (mm)</label>
+            <input type="number" id="setLargeW" min="70" max="100" step="0.5" inputmode="decimal"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" for="setLargeH">Height (mm)</label>
+            <input type="number" id="setLargeH" min="49" max="60" step="0.5" inputmode="decimal"/>
+          </div>
+        </div>
+        <label class="form-label" for="setLargeVGap" style="margin-top:10px;">Vertical gap between labels (mm)</label>
+        <input type="number" id="setLargeVGap" min="0" max="20" step="0.5" inputmode="decimal"/>
+        <div class="field-note">The layout is designed for 75 × 50 mm. Adjust these only to match the die-cut of your roll: width 70–100 mm, height 49–60 mm.</div>
       </div>
 
       <div class="card">
@@ -1169,11 +1250,46 @@ kbd {
         </div>
       </div>
 
+      <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Brand &mdash; Large Label</div>
+        <div id="brandLock" class="roll-hint" style="margin:0 0 14px;" hidden>
+          🔒 Only the admin can change these.
+        </div>
+        <div style="display:flex; gap:8px;">
+          <div class="form-group" style="flex:1; min-width:0;">
+            <label class="form-label" for="setBrandName">Brand Name</label>
+            <input type="text" id="setBrandName" placeholder="e.g. CRYSTAL CLEAR" style="text-transform:uppercase;"
+              autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off"/>
+          </div>
+          <div class="form-group" style="flex:0 0 132px;">
+            <label class="form-label" for="setBrandMark">Mark</label>
+            <select id="setBrandMark">
+              <option value="®">® Registered</option>
+              <option value="™">™ Trademark</option>
+              <option value="">None</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-note" style="margin:-6px 0 12px;">Show ® only once the registration certificate is issued, and only on goods in its registered classes. Use ™ while it is pending.</div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" for="setCustomerCare">Customer Care (email or phone)</label>
+          <input type="text" id="setCustomerCare" placeholder="e.g. radhetraders.dk@gmail.com"
+            autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"/>
+          <div class="field-note">Printed as "Customer Care: …". Leave blank to leave the line off.</div>
+        </div>
+      </div>
+
       <button class="btn-primary" id="saveSettingsBtn" onclick="saveGeometry()" style="margin-top:0.25rem;">
         <span id="saveSettingsContent">💾 SAVE SETTINGS</span>
       </button>
+      <label class="form-label" for="setTestRoll" style="margin:0.9rem 0 6px;">Test label type</label>
+      <select id="setTestRoll" aria-label="Label type for the test label">
+        <option value="single">🏷️ Single — one 50×40 mm per row</option>
+        <option value="double">🏷️🏷️ Double 2-up — two 50×40 mm side by side</option>
+        <option value="large">💎 Large — one 75×50 mm, CRYSTAL CLEAR</option>
+      </select>
       <button class="btn-secondary" id="testPrintBtn" onclick="testPrint()">🧪 PRINT TEST LABEL</button>
-      <div class="field-note">Prints one label ("TEST" in place of the batch number) with the saved settings, to check the layout lines up with the roll. It does not use a batch number or show in History.</div>
+      <div class="field-note">Prints one label ("TEST" in place of the batch number) on the type picked above, with the saved settings, to check the layout lines up with the roll. It does not use a batch number or show in History.</div>
 
       <div class="section-title">This Device</div>
       <div class="card">
@@ -1619,36 +1735,89 @@ function alertFailure(message) {
   }
 }
 
-// ── Roll type setting ────────────────────────
+// ── Label type ────────────────────────────────
+// Every print carries the label type picked on the Print tab. It starts on
+// the default from Settings and follows that default until someone picks
+// one by hand; after that it stays put for the session.
 let savedSettings = null;   // last settings the server confirmed, to spot unsaved edits
+let rollChosen    = false;  // the Print tab's label type was picked by hand
 
 async function loadSettings() {
   try {
     const res = await apiFetch(`${API}/settings`);
     if (!res || !res.ok) return;
-    const data = await res.json();
-    if (data.roll_type) document.getElementById('rollType').value = data.roll_type;
-    updateRollHint();
-    updateSummary();
-    applySettingsToForm(data);
+    applySettingsToForm(await res.json());
   } catch {}
+}
+
+function getRollType() {
+  return document.getElementById('rollType')?.value || 'single';
+}
+
+function smallSize(s) { return `${s?.label_width_mm ?? 50}×${s?.label_height_mm ?? 40}`; }
+function largeSize(s) { return `${s?.large_width_mm ?? 75}×${s?.large_height_mm ?? 50}`; }
+
+// Option text for both label type pickers, with the sizes from settings
+function rollOptionText(roll, s) {
+  if (roll === 'double') return `🏷️🏷️ Double 2-up — two ${smallSize(s)} mm side by side`;
+  if (roll === 'large')  return `💎 Large — one ${largeSize(s)} mm, ${s?.brand_name || 'CRYSTAL CLEAR'}`;
+  return `🏷️ Single — one ${smallSize(s)} mm per row`;
+}
+
+// "Large 75×50": the same words for a label type everywhere it is named
+function rollLabel(roll) {
+  if (roll === 'large')  return `Large ${largeSize(savedSettings)}`;
+  if (roll === 'double') return `2-up ${smallSize(savedSettings)}`;
+  return `Single ${smallSize(savedSettings)}`;
+}
+
+// Tag for a queue or history row: the label size the job needs loaded
+function rollBadge(roll) {
+  if (!roll) return '';
+  return ` <span class="badge badge-roll${roll === 'large' ? ' large' : ''}">${escHtml(rollLabel(roll))}</span>`;
+}
+
+// Jobs on another label size that are still waiting print straight before
+// these, on whatever roll is loaded — the printer cannot stop for a roll
+// change between them. Ask before queuing behind them.
+function confirmRollMix() {
+  const roll  = getRollType();
+  const other = (queueJobs || []).filter(j =>
+    (j.status === 'queued' || j.status === 'printing') && j.roll_type && j.roll_type !== roll);
+  if (!other.length) return true;
+  const kinds = [...new Set(other.map(j => rollLabel(j.roll_type)))].join(' and ');
+  const n = other.length;
+  return confirm(`${n} job${n !== 1 ? 's' : ''} on ${kinds} ${n !== 1 ? 'are' : 'is'} still waiting to print.\n\n`
+    + `These ${rollLabel(roll)} labels will print straight after, on the same roll. Queue them anyway?`);
 }
 
 const GEOMETRY_FIELDS = {
   setLabelW: 'label_width_mm', setLabelH: 'label_height_mm',
   setSingleVGap: 'single_vgap_mm', setDoubleVGap: 'double_vgap_mm',
   setDoubleGap: 'double_gap_mm', setDoubleMargin: 'double_margin_mm',
+  setLargeW: 'large_width_mm', setLargeH: 'large_height_mm', setLargeVGap: 'large_vgap_mm',
 };
 const DATE_FIELDS = { setDefaultShelf: 'default_shelf_months' };
 const LABEL_TEXT_FIELDS = {
   setFssaiNumber: 'fssai_number', setCompanyPrefix: 'company_prefix',
   setCompanyName: 'company_name', setCompanyAddress: 'company_address',
 };
+const BRAND_FIELDS = {
+  setBrandName: 'brand_name', setBrandMark: 'brand_mark', setCustomerCare: 'customer_care',
+};
 
 function applySettingsToForm(s) {
   if (!s) return;
   savedSettings = s;
   const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+  ['rollType', 'setDefaultRoll', 'setTestRoll'].forEach(id => {
+    document.querySelectorAll(`#${id} option`).forEach(o => { o.textContent = rollOptionText(o.value, s); });
+  });
+  set('setDefaultRoll', s.roll_type);
+  set('setTestRoll', s.roll_type);
+  if (!rollChosen) set('rollType', s.roll_type);
+  updateRollHint();
+  updateSummary();
   Object.entries(GEOMETRY_FIELDS).forEach(([id, key]) => set(id, s[key]));
   Object.entries(DATE_FIELDS).forEach(([id, key]) => set(id, s[key]));
   if (s.default_shelf_months) defaultShelfMonths = s.default_shelf_months;
@@ -1657,12 +1826,13 @@ function applySettingsToForm(s) {
   if (isTabActive('products')) renderProducts();     // so does "(default)" in the list
   // Label content fields — all mandatory declarations, editable by the admin only
   const admin = getIsAdmin();
-  Object.entries(LABEL_TEXT_FIELDS).forEach(([id, key]) => {
+  Object.entries({ ...LABEL_TEXT_FIELDS, ...BRAND_FIELDS }).forEach(([id, key]) => {
     set(id, s[key]);
     const el = document.getElementById(id);
     if (el) el.disabled = !admin;
   });
   document.getElementById('labelContentLock').hidden = admin;
+  document.getElementById('brandLock').hidden = admin;
   // The FSSAI sticker is almost always our own licence number
   const fssaiEl = document.getElementById('fssaiNumber');
   if (fssaiEl && !fssaiEl.value && s.fssai_number) fssaiEl.value = s.fssai_number;
@@ -1678,11 +1848,36 @@ function settingsDirty() {
   if (!savedSettings) return false;
   const geoChanged = Object.entries(GEOMETRY_FIELDS).some(([id, key]) =>
     parseFloat(document.getElementById(id).value) !== parseFloat(savedSettings[key]));
-  const textChanged = Object.entries(LABEL_TEXT_FIELDS).some(([id, key]) =>
+  const textChanged = Object.entries({ ...LABEL_TEXT_FIELDS, ...BRAND_FIELDS }).some(([id, key]) =>
     document.getElementById(id).value.trim() !== String(savedSettings[key] ?? ''));
   const dateChanged = Object.entries(DATE_FIELDS).some(([id, key]) =>
     parseInt(document.getElementById(id).value, 10) !== parseInt(savedSettings[key], 10));
   return geoChanged || textChanged || dateChanged;
+}
+
+// The default label type saves on its own, the moment it is picked: it sits
+// eight cards above Save, and the old roll picker saved straight away too.
+// Only that field changes, so other unsaved edits on the page stay as they are.
+async function saveDefaultRoll() {
+  const sel = document.getElementById('setDefaultRoll');
+  try {
+    const res  = await apiFetch(`${API}/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roll_type: sel.value }),
+    });
+    if (!res) return;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error);
+    savedSettings = { ...savedSettings, roll_type: data.roll_type };
+    if (!rollChosen) document.getElementById('rollType').value = data.roll_type;
+    document.getElementById('setTestRoll').value = data.roll_type;
+    updateRollHint();
+    updateSummary();
+    showToast(`✅ Default label type: ${rollLabel(data.roll_type)}`);
+  } catch (e) {
+    sel.value = savedSettings?.roll_type || 'single';
+    showToast(e?.message || 'Could not save the default label type');
+  }
 }
 
 function updateDoubleWidthPreview() {
@@ -1704,13 +1899,16 @@ async function saveGeometry() {
   const shelf = parseInt(document.getElementById('setDefaultShelf').value, 10);
   if (!Number.isInteger(shelf) || shelf < 1 || shelf > 60) { showToast('Default shelf life must be 1–60 months'); return false; }
   payload.default_shelf_months = shelf;
+  payload.roll_type = document.getElementById('setDefaultRoll').value;
   // Only the admin may change the label content, so nobody else sends it
   if (getIsAdmin()) {
-    Object.entries(LABEL_TEXT_FIELDS).forEach(([id, key]) => { payload[key] = document.getElementById(id).value.trim(); });
+    Object.entries({ ...LABEL_TEXT_FIELDS, ...BRAND_FIELDS }).forEach(([id, key]) => { payload[key] = document.getElementById(id).value.trim(); });
+    payload.brand_name = payload.brand_name.toUpperCase();
     if (!payload.fssai_number)    { showToast('FSSAI number cannot be empty'); return false; }
     if (!payload.company_prefix)  { showToast('Qualifying phrase cannot be empty'); return false; }
     if (!payload.company_name)    { showToast('Company name cannot be empty'); return false; }
     if (!payload.company_address) { showToast('Company address cannot be empty'); return false; }
+    if (!payload.brand_name)      { showToast('Brand name cannot be empty'); return false; }
   }
 
   btn.disabled = true; content.innerHTML = '<div class="spinner"></div>';
@@ -1732,14 +1930,15 @@ async function testPrint() {
     if (!confirm('You have unsaved changes. The test label prints with the saved settings.\n\nSave your changes and print the test label?')) return;
     if (!await saveGeometry()) return;
   }
-  const btn = document.getElementById('testPrintBtn');
+  const btn  = document.getElementById('testPrintBtn');
+  const roll = document.getElementById('setTestRoll')?.value || '';
   btn.disabled = true;
   try {
-    const res = await apiFetch(`${API}/test-print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const res = await apiFetch(`${API}/test-print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roll_type: roll }) });
     if (!res) return;
     const data = await res.json();
     if (!res.ok) { showToast(data.error || 'Could not queue the test label'); return; }
-    showToast(`🧪 Test label queued${data.quantity > 1 ? ' (a 2-up pair)' : ''}`);
+    showToast(`🧪 Test label queued on ${rollLabel(roll)}${data.quantity > 1 ? ' (a 2-up pair)' : ''}`);
     pollQueue();
   } catch { showToast('❌ Cannot reach server'); }
   finally { btn.disabled = false; }
@@ -1795,24 +1994,12 @@ async function changePassword() {
   }
 }
 
-async function onRollTypeChange() {
-  const val = document.getElementById('rollType').value;
+// Only this session's prints follow the pick; the default lives in Settings.
+function onRollTypeChange() {
+  rollChosen = true;
   updateRollHint();
   updateSummary();
-  try {
-    const res = await apiFetch(`${API}/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roll_type: val })
-    });
-    if (res && res.ok) {
-      showToast(val === 'double' ? 'Roll set to 2-up (side by side)' : 'Roll set to single');
-    } else {
-      showToast('Could not update roll type');
-    }
-  } catch {
-    showToast('Could not update roll type');
-  }
+  saveDraft();
 }
 
 // ── Dates ─────────────────────────────────────
@@ -1853,11 +2040,139 @@ function printedDatePair(packed, expiry) {
   return [dmy(packed), dmy(expiry)];
 }
 
-function productEntry(name) {
-  const n = String(name || '').trim().toUpperCase();
-  return n ? products.find(p => p.name.toUpperCase() === n) : undefined;
+// ── Product names ─────────────────────────────
+// Mirrors resolve_name() in product_manager.py, which has the final word
+// when a label prints: a product answers to its name, any of its other
+// names (PHALLI → PEANUTS), or a small typo of one. Spacing and punctuation
+// never count. A typo match is narrow on purpose — one slip in 4-9 letters,
+// two from 10 up, none below 4; below 7 letters only a missing, extra or
+// swapped letter, never a changed one (PASTA is not PISTA); the same first
+// letter; the same digits (CASHEW 4 PCS is never CASHEW 6 PCS); and the
+// closest match must be the only one.
+const normName  = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const digitsOf  = s => s.replace(/\D/g, '');
+const typoLimit = n => n < 4 ? 0 : n < 10 ? 1 : 2;
+
+// Edits (insert, delete, change, swap neighbours) between a and b, or
+// limit + 1 once it is clearly more than `limit`. A changed letter costs
+// `changeCost`: 2 rules it out at limit 1.
+function editDistance(a, b, limit, changeCost = 1) {
+  if (Math.abs(a.length - b.length) > limit) return limit + 1;
+  let before = null, prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] !== b[j - 1] ? changeCost : 0));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) cur[j] = Math.min(cur[j], before[j - 2] + 1);
+    }
+    if (Math.min(...cur) > limit) return limit + 1;
+    before = prev; prev = cur;
+  }
+  return prev[b.length];
 }
-const shelfMonthsFor = name => productEntry(name)?.shelf_months || defaultShelfMonths;
+
+let resolveCache = { list: null, map: new Map() };
+
+// → { p, how: 'name' | 'alias' | 'typo' } for a typed name, or null
+function resolveProduct(name) {
+  const key = normName(name);
+  if (!key) return null;
+  if (resolveCache.list !== products) resolveCache = { list: products, map: new Map() };
+  if (resolveCache.map.has(key)) return resolveCache.map.get(key);
+  let found = null;
+  let p = products.find(p => normName(p.name) === key);
+  if (p) found = { p, how: 'name' };
+  else if ((p = products.find(p => (p.aliases || []).some(a => normName(a) === key)))) found = { p, how: 'alias' };
+  else {
+    const limit = typoLimit(key.length), digits = digitsOf(key);
+    const changeCost = key.length >= 7 ? 1 : 2;
+    let best = limit + 1, hits = new Set();
+    if (limit) for (const q of products) for (const cand of [q.name, ...(q.aliases || [])]) {
+      const c = normName(cand);
+      if (c.length < 4 || c[0] !== key[0] || digitsOf(c) !== digits) continue;
+      const d = editDistance(key, c, limit, changeCost);
+      if (d < best) { best = d; hits = new Set([q]); }
+      else if (d === best) hits.add(q);
+    }
+    if (best <= limit && hits.size === 1) found = { p: [...hits][0], how: 'typo' };
+  }
+  resolveCache.map.set(key, found);
+  return found;
+}
+
+// `asTyped`: the row prints its name exactly as typed. A name the list
+// knows (its own or another of its names) still brings the product's
+// weight, shelf life and allergens; a typo match does not — it may be a
+// different product. Mirrors parse_message(as_typed=...).
+function productEntry(name, asTyped) {
+  const r = resolveProduct(name);
+  return r && !(asTyped && r.how === 'typo') ? r.p : undefined;
+}
+const shelfMonthsFor = (name, asTyped) => productEntry(name, asTyped)?.shelf_months || defaultShelfMonths;
+
+const isAsTyped = id => !!document.getElementById(`astyped-${id}`)?.checked;
+
+// What each row's product was typed as, when the form swapped in the
+// listed name (PHALI → PEANUTS); shown under the row until it is edited.
+let typedAs = {};
+// The weight canonicalizeRow filled in for a swapped name, per row — so
+// undoing a typo guess can take the guessed product's weight back out.
+let swapWeight = {};
+
+// On leaving the product box: an other name or a typo becomes the name
+// that will print, so the form shows exactly what the label will say.
+// `guess` false for rows the form filled itself (a reprint, a restored
+// draft): those names were printed or typed already, and an unlisted one
+// (PASTA) must not turn into a near neighbour (PISTA) unseen.
+function canonicalizeRow(id, guess = true) {
+  if (isAsTyped(id)) return;
+  const el    = document.getElementById(`prod-${id}`);
+  const typed = (el?.value || '').trim().toUpperCase();
+  const r     = resolveProduct(typed);
+  if (!r || r.p.name.toUpperCase() === typed || (!guess && r.how === 'typo')) return;
+  el.value = r.p.name;
+  if (r.how !== 'name') typedAs[id] = typed;   // not for mere spacing
+  // A weight already there stays: a reprint carries the weight it printed with
+  const wt = document.getElementById(`wt-${id}`);
+  if (wt && !wt.value.trim()) { wt.value = weightForForm(r.p.weight); updateUOM(id); swapWeight[id] = wt.value; }
+  refreshAfterChange();
+}
+
+// Ticked: put back what was typed, if the form had swapped in the listed
+// name. Unticked: swap it in again.
+function onAsTypedChange(id) {
+  const el = document.getElementById(`prod-${id}`);
+  const wt = document.getElementById(`wt-${id}`);
+  clearRowError(id);
+  if (isAsTyped(id)) {
+    if (typedAs[id] && el) el.value = typedAs[id];
+    delete typedAs[id];
+    // The weight the swap filled in was the guessed product's. A name the
+    // list doesn't know needs its own, so it goes and the row asks for it.
+    if (wt && swapWeight[id] && wt.value === swapWeight[id] && !productEntry(el?.value, true)) {
+      wt.value = '';
+      updateUOM(id);
+      wt.classList.add('error');
+      setRowError(id, `${el.value.trim().toUpperCase()} isn't in the product list — enter its weight.`);
+      wt.focus();
+    }
+    delete swapWeight[id];
+  } else {
+    canonicalizeRow(id);
+  }
+  // Fill an empty weight from the product the name now means; never clear one
+  const entry = productEntry(el?.value, isAsTyped(id));
+  if (entry && wt && !wt.value.trim()) { wt.value = weightForForm(entry.weight); updateUOM(id); }
+  refreshAfterChange();
+}
+
+// "Keep PHALI" on a corrected typo: the same as ticking Print as typed
+function keepAsTyped(id) {
+  const box = document.getElementById(`astyped-${id}`);
+  if (!box) return;
+  box.checked = true;
+  onAsTypedChange(id);
+}
 
 function setDefaultDates() {
   document.getElementById('packedDate').value = todayStr();
@@ -1879,13 +2194,27 @@ function refreshUseBy() {
     const name = (document.getElementById(`prod-${id}`)?.value || '').trim();
     if (!meta) return;
     if (!name || !packed) { meta.textContent = ''; return; }
-    const shelf  = shelfMonthsFor(name);
-    if (productEntry(name)?.shelf_months) anyOwnShelf = true;
+    const asTyped = isAsTyped(id);
+    const entry  = productEntry(name, asTyped);
+    const shelf  = shelfMonthsFor(name, asTyped);
+    if (entry?.shelf_months) anyOwnShelf = true;
     const expiry = useByAuto ? addMonths(packed, shelf) : parseInputDate(bbEl.value);
     if (useByAuto) shelves.add(shelf);
     if (!expiry) { meta.textContent = ''; return; }
     const [p, e] = printedDatePair(packed, expiry);
-    meta.textContent = `Prints: Packed ${p} · Use By ${e}` + (useByAuto ? ` (${shelf}-month shelf life)` : '');
+    const asTypedNote = asTyped
+      ? `Prints as typed: ${name.toUpperCase()}${entry ? '' : ' (not in the product list)'} · `
+      : '';
+    // A corrected typo is a guess, so it stands out from the rest of the line
+    const corrected = typedAs[id] && resolveProduct(typedAs[id])?.how === 'typo';
+    const swap = typedAs[id]
+      ? `<span class="${corrected ? 'meta-fix' : ''}">${escHtml(typedAs[id])} → ${escHtml(entry?.name || name)}${corrected ? ' (spelling corrected)' : ''}</span>`
+        + (corrected ? ` <button type="button" class="link-btn" onclick="keepAsTyped(${id})">Keep ${escHtml(typedAs[id])}</button>` : '')
+        + ' · '
+      : '';
+    meta.innerHTML = escHtml(asTypedNote) + swap
+      + escHtml(`Prints: Packed ${p} · Use By ${e}` + (useByAuto ? ` (${shelf}-month shelf life)` : '')
+      + (entry?.allergens?.length ? ` · Contains ${entry.allergens.join(', ')}` : ''));
   });
   if (useByAuto && packed) {
     // One shared shelf life shows as a date; mixed ones leave the box empty
@@ -2059,7 +2388,10 @@ function updateUOM(id) {
 }
 
 function onProductSelect(id) {
-  const match = productEntry(document.getElementById(`prod-${id}`)?.value);
+  // Runs on every keystroke, so only a name the list knows fills the weight:
+  // a typo guess would hand a new product (MALT) a listed one's (SALT).
+  // The guess is applied on leaving the box, where it is shown.
+  const match = productEntry(document.getElementById(`prod-${id}`)?.value, true);
   if (match) {
     // weightForForm keeps the unit when it isn't the one the bare number implies
     // ('16 g' stays '16 g'); a plain parseFloat turned it into 16 → printed as 16 kg.
@@ -2072,7 +2404,7 @@ function onProductSelect(id) {
   }
 }
 
-function addRow(product='', qty='', weight='') {
+function addRow(product='', qty='', weight='', asTyped=false) {
   rowId++;
   const id  = rowId;
   const div = document.createElement('div');
@@ -2109,6 +2441,10 @@ function addRow(product='', qty='', weight='') {
       <button type="button" tabindex="-1" class="qty-preset" onclick="bumpQty(${id},25)" aria-label="Add 25 to quantity">+25</button>
       <button type="button" tabindex="-1" class="qty-preset" onclick="bumpQty(${id},50)" aria-label="Add 50 to quantity">+50</button>
       <button type="button" tabindex="-1" class="qty-preset" onclick="setQty(${id},100)" aria-label="Set quantity to 100">100</button>
+      <label class="as-typed" title="Print the name exactly as typed: no English name, no other-name or typo correction">
+        <input type="checkbox" id="astyped-${id}" ${asTyped ? 'checked' : ''} onchange="onAsTypedChange(${id})"/>
+        Print as typed
+      </label>
     </div>
     <button type="button" class="job-card-preview" onclick="previewRow(${id})" aria-label="Preview this label" title="Preview label">👁</button>
     <button type="button" class="job-card-clone" onclick="cloneRow(${id})" aria-label="Duplicate this item" title="Duplicate item">⧉</button>
@@ -2116,6 +2452,8 @@ function addRow(product='', qty='', weight='') {
   `;
   document.getElementById('jobRows').appendChild(div);
   renderCombo(id, '');
+  // A reprint or restored draft may carry an old name (PHALLI): show the English one
+  if (product) canonicalizeRow(id, false);
   return id;
 }
 
@@ -2128,13 +2466,14 @@ function removeRow(id) {
     product: document.getElementById(`prod-${id}`)?.value || '',
     qty:     document.getElementById(`qty-${id}`)?.value || '',
     weight:  document.getElementById(`wt-${id}`)?.value || '',
+    asTyped: isAsTyped(id),
   };
   removeRowEl(id);
   ensureTrailingRow();
   refreshAfterChange();
   if (!saved.product.trim() && !saved.qty) return;
   showToast(`Removed ${saved.product.trim() || 'item'}`, { label: 'Undo', fn: () => {
-    const newId = addRow(saved.product, saved.qty, saved.weight);
+    const newId = addRow(saved.product, saved.qty, saved.weight, saved.asTyped);
     const before = document.querySelectorAll('.job-card')[index];
     const el = document.getElementById(`row-${newId}`);
     if (before && el && before !== el) before.parentNode.insertBefore(el, before);
@@ -2145,6 +2484,8 @@ function removeRow(id) {
 function removeRowEl(id) {
   document.getElementById(`row-${id}`)?.remove();
   delete comboState[id];
+  delete typedAs[id];
+  delete swapWeight[id];
 }
 
 function setRowError(id, msg) {
@@ -2163,7 +2504,7 @@ function cloneRow(id) {
   const prod = document.getElementById(`prod-${id}`)?.value || '';
   const qty  = document.getElementById(`qty-${id}`)?.value || '';
   const wt   = document.getElementById(`wt-${id}`)?.value || '';
-  const newId = addRow(prod, qty, wt);
+  const newId = addRow(prod, qty, wt, isAsTyped(id));
   // Place the clone directly after the source row
   const src   = document.getElementById(`row-${id}`);
   const clone = document.getElementById(`row-${newId}`);
@@ -2181,32 +2522,44 @@ function renderCombo(id, filter, autoPick) {
   if (!dd) return;
   const val = (document.getElementById(`prod-${id}`)?.value||'').toUpperCase().trim();
   const f   = (filter||'').toUpperCase().trim();
-  // Exact, then starts-with, then a word starting with it, then anywhere
+  // Exact, then starts-with, then a word starting with it, then anywhere —
+  // by its name, or a little lower by one of its other names (PHAL → PEANUTS)
   const rank = n => n === f ? 0 : n.startsWith(f) ? 1 : n.split(/[\s.]+/).some(w => w.startsWith(f)) ? 2 : 3;
-  const filtered = products
-    .map((p, i) => ({ p, i, n: p.name.toUpperCase() }))
-    .filter(x => x.n.includes(f))
-    .sort((a, b) => rank(a.n) - rank(b.n) || a.i - b.i)
-    .map(x => x.p);
-  const exactMatch = products.some(p => p.name.toUpperCase() === val);
+  // Between other names that match equally well, the shorter is the closer
+  // one: BAD finds BADAM before BADI ELAICHI. Names keep the list's order.
+  let matches = products.map((p, i) => {
+    const n = p.name.toUpperCase();
+    if (n.includes(f)) return { p, i, r: rank(n), start: n.startsWith(f) };
+    const a = (p.aliases || []).map(s => s.toUpperCase()).filter(s => s.includes(f))
+      .sort((x, y) => rank(x) - rank(y) || x.length - y.length)[0];
+    return a ? { p, i, r: rank(a) + 0.5, start: a.startsWith(f), via: a } : null;
+  }).filter(Boolean).sort((a, b) => a.r - b.r || (a.via && b.via ? a.via.length - b.via.length : 0) || a.i - b.i);
+  // Nothing contains it: offer the product it is a small typo of, if there is one
+  const guess = !matches.length && f ? resolveProduct(f) : null;
+  if (guess) matches = [{ p: guess.p, i: 0, r: 9, start: false, via: 'closest match' }];
+  const filtered = matches.map(x => x.p);
+  const how        = resolveProduct(val)?.how;
+  const exactMatch = how === 'name' || how === 'alias';
   const hasNew     = !!(val && !exactMatch);
   const prev       = comboState[id] || { active: -1 };
   const optionCount = filtered.length + (hasNew ? 1 : 0);
   let active = prev.active;
-  if (autoPick) active = (f && filtered.length && filtered[0].name.toUpperCase().startsWith(f)) ? 0 : -1;
+  // A row printing as typed keeps what was typed on Enter; a click or the
+  // arrow keys can still pick a suggestion
+  if (autoPick) active = (f && matches.length && matches[0].start && !isAsTyped(id)) ? 0 : -1;
   if (active >= optionCount) active = optionCount - 1;
   comboState[id] = { items: filtered, hasNew, active, val };
 
-  let html = filtered.map((p, i) => `
+  let html = matches.map(({ p, via }, i) => `
     <div class="combo-option ${i===active?'active':''}" data-idx="${i}" id="opt-${id}-${i}"
       role="option" aria-selected="${i===active}" onmousedown="selectComboItem(${id},${i})">
-      <span>${escHtml(p.name)}${p.inherited ? '<span class="combo-option-tag">general</span>' : ''}</span>
+      <span>${escHtml(p.name)}${via ? `<span class="combo-option-tag">${escHtml(via)}</span>` : ''}${p.inherited ? '<span class="combo-option-tag">general</span>' : ''}${p.allergens?.length ? '<span class="combo-option-tag">⚠ allergen</span>' : ''}</span>
       <span class="combo-option-weight">${escHtml(p.weight)}</span>
     </div>`).join('');
   if (hasNew) {
     const newIdx = filtered.length;
     html += `<div class="combo-new ${newIdx===active?'active':''}" data-idx="${newIdx}" id="opt-${id}-${newIdx}"
-      role="option" aria-selected="${newIdx===active}" onmousedown="addNewProduct(${id})">+ Add "${escHtml(val)}" to list</div>`;
+      role="option" aria-selected="${newIdx===active}" onmousedown="event.preventDefault(); addNewProduct(${id})">+ Add "${escHtml(val)}" to list</div>`;
   }
   dd.innerHTML = html || '<div class="combo-option" style="color:#aaa;pointer-events:none;">No products found</div>';
   const input = document.getElementById(`prod-${id}`);
@@ -2300,7 +2653,7 @@ function onProductFocus(id) {
   }, 350);
 }
 function onComboBlur(id) {
-  setTimeout(() => setComboOpen(id, false), 200);
+  setTimeout(() => { setComboOpen(id, false); canonicalizeRow(id); }, 200);
 }
 function onComboInput(id, e) {
   const v = document.getElementById(`prod-${id}`);
@@ -2315,6 +2668,8 @@ function onComboInput(id, e) {
       try { v.setSelectionRange(s, end); } catch {}
     }
   }
+  delete typedAs[id];
+  delete swapWeight[id];
   renderCombo(id, v.value.trim(), true);
   setComboOpen(id, true);
   onProductSelect(id);
@@ -2394,7 +2749,7 @@ function rowLine(id) {
     return null;
   }
   // A product that isn't in the list has no weight to fall back on
-  if (!wt && !productEntry(prod)) {
+  if (!wt && !productEntry(prod, isAsTyped(id))) {
     wtEl?.classList.add('error');
     setRowError(id, `${prod} isn't in the product list — enter its weight.`);
     return null;
@@ -2415,7 +2770,7 @@ async function submitPrint() {
     const id   = row.id.replace('row-','');
     const line = rowLine(id);
     if (line === null) { hasError = true; return; }
-    if (line) { jobs.push({line}); jobRowIds.push(id); }
+    if (line) { jobs.push(isAsTyped(id) ? { line, as_typed: true } : { line }); jobRowIds.push(id); }
   });
 
   if (hasError) { showToast('Fix highlighted fields'); return; }
@@ -2435,7 +2790,7 @@ async function submitPrint() {
   }
 
   // Warn if the printer looks offline — jobs still queue, but flag it.
-  if (!await confirmPrinterReady()) return;
+  if (!confirmRollMix() || !await confirmPrinterReady()) return;
 
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
@@ -2446,7 +2801,7 @@ async function submitPrint() {
   // it out per item from each product's shelf life.
   const bestBefore = useByAuto ? '' : formatDateForServer(document.getElementById('bestBeforeDate')?.value || '');
   try {
-    const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs, hotel, packed_on: packedOn, best_before: bestBefore})});
+    const res  = await apiFetch(`${API}/print`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs, hotel, packed_on: packedOn, best_before: bestBefore, roll_type: getRollType()})});
     if (!res) return;
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !Array.isArray(data.results)) { showToast(data.error || 'Could not queue the print'); return; }
@@ -2460,12 +2815,18 @@ async function submitPrint() {
 
     if (!failed.length) {
       document.getElementById('jobRows').innerHTML='';
-      comboState = {};
+      comboState = {}; typedAs = {}; swapWeight = {};
       rowId=0; addRow();
       localStorage.removeItem(DRAFT_KEY);
       hideDateNotice();
       refreshUseBy();
       updateSummary();
+      // The results list is left behind on this tab, so the toast carries
+      // what matters from it: how much, on which labels, and any renames
+      const total = results.reduce((s, r) => s + (parseInt(r.quantity) || 0), 0);
+      const fixes = results.filter(r => r.requested_as).map(r => `${r.requested_as} → ${r.product}`);
+      showToast(`✅ Queued ${results.length} item${results.length !== 1 ? 's' : ''} · ${total} sticker${total !== 1 ? 's' : ''} on ${rollLabel(getRollType())}`
+        + (fixes.length ? ` · ${fixes.slice(0, 2).join(', ')}${fixes.length > 2 ? ' …' : ''}` : ''));
       // Auto-switch to queue tab so user can see their jobs
       switchTab('queue');
       return;
@@ -2497,9 +2858,9 @@ function showResults(results) {
       d.innerHTML = `
         <div class="result-icon">✅</div>
         <div>
-          <div class="result-product">${escHtml(r.product)} × ${escHtml(r.quantity)} — queued</div>
+          <div class="result-product">${escHtml(r.product)}${r.requested_as ? ` <span class="result-typed">(typed ${escHtml(r.requested_as)})</span>` : ''}${r.as_typed ? ' <span class="result-typed">(as typed)</span>' : ''} × ${escHtml(r.quantity)} — queued</div>
           <div class="result-detail">
-            ${escHtml(r.weight)} · Packed: ${escHtml(r.packed_on)} · Use By: ${escHtml(r.best_before)}<br>
+            ${escHtml(r.weight)} · Packed: ${escHtml(r.packed_on)} · Use By: ${escHtml(r.best_before)}${r.allergens ? ` · Contains: ${escHtml(r.allergens)}` : ''}<br>
             Batch: <span class="result-batch">${escHtml(r.batch_no)}</span>
           </div>
         </div>`;
@@ -2516,7 +2877,7 @@ function resetAll() {
   const hadItems = before.rows.some(r => (r.product||'').trim() || r.qty);
   document.getElementById('jobRows').innerHTML='';
   document.getElementById('results').innerHTML='';
-  comboState = {};
+  comboState = {}; typedAs = {}; swapWeight = {};
   rowId=0; addRow();
   localStorage.removeItem(DRAFT_KEY);
   hideDateNotice();
@@ -2564,7 +2925,7 @@ function onQtyKey(e, id) {
   // rather than finding out at print time.
   const prod = document.getElementById(`prod-${id}`)?.value || '';
   const wtEl = document.getElementById(`wt-${id}`);
-  if (prod.trim() && !productEntry(prod) && !(wtEl?.value || '').trim()) {
+  if (prod.trim() && !productEntry(prod, isAsTyped(id)) && !(wtEl?.value || '').trim()) {
     wtEl?.focus();
     return;
   }
@@ -2636,11 +2997,14 @@ function updateSummary() {
       el.className = 'print-summary empty';
       el.textContent = 'Add a product and quantity to print';
     } else {
-      const roll = document.getElementById('rollType')?.value || 'single';
+      const roll = getRollType();
       let txt = `<strong>${items}</strong> item${items!==1?'s':''} · <strong>${stickers}</strong> sticker${stickers!==1?'s':''}`;
+      // The label size, every time: printing on the wrong roll wastes the lot
       if (roll === 'double') {
         const nrows = Math.ceil(stickers / 2);
-        txt += ` · ≈ <strong>${nrows}</strong> row${nrows!==1?'s':''} (2-up)`;
+        txt += ` · ≈ <strong>${nrows}</strong> row${nrows!==1?'s':''} on the <strong>2-up ${smallSize(savedSettings)}</strong> roll`;
+      } else {
+        txt += ` · on <strong>${roll === 'large' ? largeSize(savedSettings) : smallSize(savedSettings)}</strong> labels`;
       }
       el.className = 'print-summary';
       el.innerHTML = txt;
@@ -2664,6 +3028,7 @@ function captureFormState() {
       product: document.getElementById(`prod-${id}`)?.value || '',
       qty:     document.getElementById(`qty-${id}`)?.value || '',
       weight:  document.getElementById(`wt-${id}`)?.value || '',
+      asTyped: isAsTyped(id),
     });
   });
   return {
@@ -2674,6 +3039,9 @@ function captureFormState() {
     useByAuto,
     packedCustom,
     day:    todayStr(),   // dates are only trusted back on the day they were set
+    // A label type picked by hand comes back with the items; otherwise the
+    // form follows the default from Settings as usual
+    roll:   rollChosen ? getRollType() : '',
   };
 }
 
@@ -2685,10 +3053,16 @@ function applyFormState(st) {
     printSel.value = st.hotel;
     products = productsForHotel(st.hotel);
   }
+  const rollSel = document.getElementById('rollType');
+  if (st.roll && rollSel && [...rollSel.options].some(o => o.value === st.roll)) {
+    rollSel.value = st.roll;
+    rollChosen = true;
+    updateRollHint();
+  }
   document.getElementById('jobRows').innerHTML = '';
-  comboState = {};
+  comboState = {}; typedAs = {}; swapWeight = {};
   rowId = 0;
-  (st.rows || []).forEach(r => addRow(r.product||'', r.qty||'', r.weight||''));
+  (st.rows || []).forEach(r => addRow(r.product||'', r.qty||'', r.weight||'', !!r.asTyped));
   ensureTrailingRow();
 
   setDefaultDates();
@@ -2718,7 +3092,7 @@ function restoreDraftOrDefault() {
 
   if (!hasContent) {
     document.getElementById('jobRows').innerHTML = '';
-    comboState = {};
+    comboState = {}; typedAs = {}; swapWeight = {};
     rowId = 0;
     addRow();
     setDefaultDates();
@@ -2731,14 +3105,25 @@ function restoreDraftOrDefault() {
   if (draft.day !== todayStr() && draft.packed && draft.packed !== todayStr()) {
     showDateNotice('📅 Items restored from an earlier session — the dates were reset to today. Check them before printing.');
   }
-  showToast('Restored your last items');
+  showToast(draft.roll ? `Restored your last items, on ${rollLabel(draft.roll)} labels` : 'Restored your last items');
 }
 
 // ── Roll hint ────────────────────────────────
 function updateRollHint() {
-  const val  = document.getElementById('rollType')?.value || 'single';
+  const val  = getRollType();
   const hint = document.getElementById('rollHint');
-  if (hint) hint.style.display = val === 'double' ? 'block' : 'none';
+  if (!hint) return;
+  const parts = [{
+    double: '🏷️🏷️ 2-up roll: labels print two side by side. An odd final label prints alone (right column blank).',
+    large:  `💎 Load the ${largeSize(savedSettings)} mm roll — these print as ${savedSettings?.brand_name || 'CRYSTAL CLEAR'} labels.`,
+  }[val]];
+  // A pick away from the usual roll is the one most easily left on by mistake
+  const usual = savedSettings?.roll_type;
+  if (usual && val !== usual) {
+    parts.push(`⚠️ Not your usual label (${rollLabel(usual)}) — check the roll in the printer.`);
+  }
+  hint.textContent = parts.filter(Boolean).join(' ');
+  hint.style.display = hint.textContent ? 'block' : 'none';
 }
 
 // ── Products ─────────────────────────────────
@@ -2793,20 +3178,43 @@ async function loadProducts() {
 
   // Set products for print combo dropdown based on selected print hotel
   products = productsForHotel(getSelectedPrintHotel());
+  // Rows filled before the list arrived (a restored draft) get their
+  // English names now — all but one still being typed in
+  document.querySelectorAll('.job-card').forEach(row => {
+    const id = row.id.replace('row-', '');
+    if (document.activeElement?.id !== `prod-${id}`) canonicalizeRow(id, false);
+  });
   renderProducts();
   refreshUseBy();
 }
 
 // A hotel's own products plus every General product it doesn't override —
-// the same fallback the server uses when it looks a product up.
+// the same fallback the server uses when it looks a product up. An own
+// product with no other names or allergens of its own uses General's.
 function productsForHotel(hotel) {
   const own = allByHotel[hotel] || [];
   if (hotel === 'general') return own;
-  const mine = new Set(own.map(p => p.name.toUpperCase()));
+  const covered = new Set();
+  const filled = own.map(p => {
+    const g = generalTwinOf(p.name);
+    if (g) covered.add(g.name);
+    return { ...p,
+      aliases:   p.aliases?.length   ? p.aliases   : (g?.aliases   || []),
+      allergens: p.allergens?.length ? p.allergens : (g?.allergens || []) };
+  });
   const inherited = (allByHotel.general || [])
-    .filter(p => !mine.has(p.name.toUpperCase()))
+    .filter(p => !covered.has(p.name))
     .map(p => ({ ...p, inherited: true }));
-  return own.concat(inherited);
+  return filled.concat(inherited);
+}
+
+// The General product a hotel's own entry stands in for: same name, else
+// one that answers to it (General renamed it since). Mirrors _general_twin().
+function generalTwinOf(name) {
+  const general = allByHotel.general || [];
+  const n = normName(name);
+  return general.find(g => normName(g.name) === n)
+      || general.find(g => (g.aliases || []).some(a => normName(a) === n)) || null;
 }
 
 function onPrintHotelChange() {
@@ -2837,44 +3245,147 @@ function shelfText(p) {
   return p.shelf_months ? `${p.shelf_months}-month shelf life` : `${defaultShelfMonths}-month shelf life (default)`;
 }
 
+// The General entry a hotel's product falls back to for other names and allergens
+function generalTwin(hotel, p) {
+  return hotel === 'general' || !p ? null : generalTwinOf(p.name);
+}
+
+// "PHALLI, PALLI, GROUNDNUT +4 more"
+function namesPreview(names) {
+  const shown = names.slice(0, 4).join(', ');
+  return names.length > 4 ? `${shown} +${names.length - 4} more` : shown;
+}
+
 function renderProducts() {
   const list = document.getElementById('productList');
   if (!list) return;
   const hotel = getSelectedProductsHotel();
-  shownProducts = allByHotel[hotel] || [];
+  const all   = allByHotel[hotel] || [];
+  const q     = normName(document.getElementById('productSearch')?.value);
+  // Other names count whether the product has its own or uses General's
+  const names = p => [p.name, ...(p.aliases?.length ? p.aliases : (generalTwin(hotel, p)?.aliases || []))];
+  shownProducts = q ? all.filter(p => names(p).some(n => normName(n).includes(q))) : all;
   const note = document.getElementById('productsHotelNote');
-  if (note) note.textContent = hotel === 'general' ? '' : `Products not listed here use their General entry when printing for ${hotel}.`;
-  list.innerHTML = shownProducts.length ? shownProducts.map((p,i)=>`
+  if (note) note.textContent = hotel === 'general' ? '' : `Products not listed here use their General entry when printing for ${hotel}. Other names and allergens left blank here come from General.`;
+  const count = document.getElementById('productsCount');
+  const withAllergens = all.filter(p => (p.allergens?.length || generalTwin(hotel, p)?.allergens?.length)).length;
+  if (count) count.textContent = q
+    ? `${shownProducts.length} of ${all.length} products`
+    : `${all.length} products · ${withAllergens} with an allergen line`;
+  list.innerHTML = shownProducts.length ? shownProducts.map((p,i)=>{
+    const twin      = generalTwin(hotel, p);
+    const allergens = p.allergens?.length ? p.allergens : (twin?.allergens || []);
+    const aliases   = p.aliases?.length ? p.aliases : (twin?.aliases || []);
+    const inherited = !p.allergens?.length && allergens.length;
+    return `
     <div class="product-item" id="pitem-${i}">
-      <div>
-        <div class="product-item-name">${escHtml(p.name)}</div>
+      <div style="min-width:0;">
+        <div class="product-item-name">${escHtml(p.name)}${allergens.length ? `<span class="allergen-tag${inherited ? ' inherited' : ''}" title="Prints: CONTAINS ${escHtml(allergens.join(', '))}">⚠ ${escHtml(allergens.join(', '))}</span>` : ''}</div>
         <div class="product-item-weight">${escHtml(p.weight)} · ${shelfText(p)}</div>
+        ${aliases.length ? `<div class="product-item-names">Also: ${escHtml(namesPreview(aliases))}</div>` : ''}
       </div>
       <div class="product-item-actions">
         <button class="product-item-edit" onclick="editProduct(${i})" aria-label="Edit ${escHtml(p.name)}">✎</button>
         <button class="product-item-remove" onclick="removeProduct(${i})" aria-label="Remove ${escHtml(p.name)}">×</button>
       </div>
-    </div>`).join('') : '<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">No products in this hotel.</div>';
+    </div>`;
+  }).join('') : `<div style="color:var(--muted);font-size:0.88rem;padding:0.5rem 0;">${q ? 'No product goes by that name.' : 'No products in this hotel.'}</div>`;
+}
+
+// One tap adds or removes an allergen. FSSAI's list, as relevant to this stock.
+const ALLERGEN_CHIPS = ['PEANUT', 'TREE NUTS', 'GLUTEN (WHEAT)', 'GLUTEN (BARLEY)', 'SOY', 'MILK', 'SULPHITE'];
+const allergenTokens = text => String(text || '').split(/[,\n]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+// "TREE NUTS (CASHEW)" counts as the TREE NUTS chip
+const chipIndex = (tokens, chip) => tokens.findIndex(t => t === chip || t.startsWith(chip + ' ('));
+
+const MAX_ALLERGEN_LEN = 40;   // product_manager.MAX_ALLERGEN_LEN: one label line
+
+// The allergens a hotel's product gets from General while its own box is blank
+const inheritedAllergens = idx => generalTwin(getSelectedProductsHotel(), shownProducts[idx])?.allergens || [];
+
+function renderAllergenChips(idx) {
+  const box = document.getElementById(`pedit-chips-${idx}`);
+  const own = allergenTokens(document.getElementById(`pedit-allergens-${idx}`)?.value);
+  // Blank means "same as General": those show as on, outlined
+  const inherited = !own.length && inheritedAllergens(idx).length > 0;
+  const toks = inherited ? inheritedAllergens(idx) : own;
+  const used = toks.join(', ').length;
+  if (box) box.innerHTML = ALLERGEN_CHIPS.map(c => {
+    const on = chipIndex(toks, c) >= 0;
+    return `<button type="button" class="allergen-chip ${on ? 'on' : ''} ${on && inherited ? 'inherited' : ''}"
+      aria-pressed="${on}" onclick="toggleAllergen(${idx}, '${c}')">${c}</button>`;
+  }).join('')
+    + (inherited ? '<span class="allergen-chip-note">from General</span>' : '')
+    + `<span class="allergen-count${used > MAX_ALLERGEN_LEN ? ' over' : ''}">${used}/${MAX_ALLERGEN_LEN}</span>`;
+}
+
+function toggleAllergen(idx, chip) {
+  const el = document.getElementById(`pedit-allergens-${idx}`);
+  let toks = allergenTokens(el.value);
+  // Start from what it inherits, so one tap adds to General's allergens
+  // instead of quietly replacing them
+  if (!toks.length) toks = [...inheritedAllergens(idx)];
+  const at = chipIndex(toks, chip);
+  if (at >= 0) toks.splice(at, 1);
+  else if ([...toks, chip].join(', ').length > MAX_ALLERGEN_LEN) {
+    showToast(`No room for ${chip} — the allergen line holds ${MAX_ALLERGEN_LEN} characters`);
+    return;
+  } else toks.push(chip);
+  el.value = toks.join(', ');
+  renderAllergenChips(idx);
 }
 
 function editProduct(idx) {
   const el = document.getElementById(`pitem-${idx}`);
   const p  = shownProducts[idx];
   if (!el || !p) return;
-  el.className = 'product-edit-row';
+  const twin = generalTwin(getSelectedProductsHotel(), p);
+  const fromGeneral = list => list?.length ? `From General: ${list.join(', ')}` : '';
+  el.className = 'product-edit-box';
   el.innerHTML = `
-    <input type="text" id="pedit-name-${idx}" value="${escHtml(p.name)}" aria-label="Product name" style="text-transform:uppercase; flex:2;"
+    <div class="product-edit-line product-edit-heads" aria-hidden="true">
+      <span style="flex:2;">Name</span><span style="flex:1; max-width:70px;">Weight</span><span style="flex:1; max-width:62px;">Shelf (mo)</span>
+    </div>
+    <div class="product-edit-line">
+      <input type="text" id="pedit-name-${idx}" value="${escHtml(p.name)}" aria-label="Product name" style="text-transform:uppercase; flex:2;"
+        autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="done"
+        onkeydown="onProductEditKey(event, ${idx})"/>
+      <input type="text" id="pedit-wt-${idx}" value="${escHtml(weightForForm(p.weight))}" aria-label="Weight" style="max-width:70px;"
+        autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="done" onkeydown="onProductEditKey(event, ${idx})"/>
+      <input type="number" id="pedit-shelf-${idx}" value="${p.shelf_months || ''}" placeholder="mo" min="1" max="60"
+        inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" onkeydown="onProductEditKey(event, ${idx})"
+        aria-label="Shelf life in months (blank for ${defaultShelfMonths})" style="max-width:62px;"/>
+    </div>
+    <label class="product-edit-label" for="pedit-aliases-${idx}">Other names, separated by commas — typing any of these finds it</label>
+    <textarea id="pedit-aliases-${idx}" rows="2"
+      placeholder="${escHtml(fromGeneral(twin?.aliases) || 'e.g. PHALLI, GROUNDNUT')}"
       autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="done"
-      onkeydown="onProductEditKey(event, ${idx})"/>
-    <input type="text" id="pedit-wt-${idx}" value="${escHtml(weightForForm(p.weight))}" aria-label="Weight" style="max-width:70px;"
-      autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="done" onkeydown="onProductEditKey(event, ${idx})"/>
-    <input type="number" id="pedit-shelf-${idx}" value="${p.shelf_months || ''}" placeholder="mo" min="1" max="60"
-      inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" onkeydown="onProductEditKey(event, ${idx})"
-      aria-label="Shelf life in months (blank for ${defaultShelfMonths})" style="max-width:62px;"/>
-    <button class="btn-small" onclick="saveProduct(${idx})">Save</button>
-    <button class="product-edit-cancel" onclick="renderProducts()" aria-label="Cancel edit">✕</button>
+      onkeydown="onProductEditKey(event, ${idx})">${escHtml((p.aliases || []).join(', '))}</textarea>
+    <label class="product-edit-label" for="pedit-allergens-${idx}">Allergens — print as CONTAINS: …</label>
+    <input type="text" id="pedit-allergens-${idx}" value="${escHtml((p.allergens || []).join(', '))}" maxlength="40"
+      placeholder="${escHtml(fromGeneral(twin?.allergens) || 'None')}" style="text-transform:uppercase;"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="done"
+      oninput="renderAllergenChips(${idx})" onkeydown="onProductEditKey(event, ${idx})"/>
+    <div class="allergen-chips" id="pedit-chips-${idx}"></div>
+    <div class="product-edit-line" style="justify-content:flex-end; margin-top:2px;">
+      <button class="btn-small" onclick="saveProduct(${idx})">Save</button>
+      <button class="product-edit-cancel" onclick="renderProducts()" aria-label="Cancel edit">✕</button>
+    </div>
   `;
+  renderAllergenChips(idx);
   document.getElementById(`pedit-name-${idx}`)?.focus();
+}
+
+// Find a product on the Products tab and open its edit form at the allergens
+function openProductEditor(name) {
+  const search = document.getElementById('productSearch');
+  if (search) search.value = name;
+  renderProducts();
+  const idx = shownProducts.findIndex(p => p.name.toUpperCase() === String(name).toUpperCase());
+  if (idx < 0) return;
+  editProduct(idx);
+  document.getElementById(`pitem-${idx}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  document.getElementById(`pedit-allergens-${idx}`)?.focus();
 }
 
 function onProductEditKey(e, idx) {
@@ -2897,20 +3408,26 @@ async function saveProduct(idx) {
   const newName   = (document.getElementById(`pedit-name-${idx}`)?.value || '').trim().toUpperCase();
   const newWtRaw  = (document.getElementById(`pedit-wt-${idx}`)?.value || '').trim();
   const shelf     = readShelfInput(document.getElementById(`pedit-shelf-${idx}`));
+  const aliases   = allergenTokens(document.getElementById(`pedit-aliases-${idx}`)?.value);
+  const allergens = allergenTokens(document.getElementById(`pedit-allergens-${idx}`)?.value);
   const hotel     = getSelectedProductsHotel();
   if (!p) return;
   if (!newName || !newWtRaw) { showToast('Enter name and weight'); return; }
   if (shelf === null) return;
+  if (allergens.join(', ').length > 40) { showToast('Allergens must fit one label line — 40 characters at most'); return; }
 
   try {
-    // One request: the server renames, reweighs and sets shelf life in a single write
+    // One request: the server renames, reweighs and sets everything else in a single write
     const r = await postJson('/products/update', {
       old_product: p.name, product: newName, weight: normalizeWeightInput(newWtRaw), shelf_months: shelf, hotel,
+      aliases, allergens,
     });
     if (!r) return;
     if (!r.ok) { showToast(r.data.error || 'Failed to update'); return; }
     await loadProducts();
-    showToast(`✅ Updated ${newName}`);
+    showToast(newName !== p.name.toUpperCase()
+      ? `✅ Renamed to ${newName} — ${p.name} still finds it`
+      : `✅ Updated ${newName}`);
   } catch { showToast('Failed to update'); }
 }
 
@@ -2922,6 +3439,13 @@ async function addProductHandler() {
   const hotel  = getSelectedProductsHotel();
   if (!name||!weight) { showToast('Enter name and weight'); return; }
   if (shelf === null) return;
+  // A name this list already has — or another name for one (BADAM is
+  // ALMONDS) — changes that product rather than adding one: say so first
+  const listed = (allByHotel[hotel] || []).find(p => [p.name, ...(p.aliases || [])].some(n => normName(n) === normName(name)));
+  if (listed && normName(listed.weight) !== normName(weight)) {
+    const what = normName(listed.name) === normName(name) ? `${listed.name} is already listed` : `${name} is another name for ${listed.name}`;
+    if (!confirm(`${what}, at ${listed.weight}.\n\nChange ${listed.name} to ${weight}${hotel === 'general' ? '' : ` for [${hotel}]`}?`)) return;
+  }
   try {
     // Left out when blank, so re-adding an existing product keeps its shelf life
     const body = { product: name, weight, hotel };
@@ -2932,7 +3456,12 @@ async function addProductHandler() {
     document.getElementById('newProduct').value='';
     document.getElementById('newWeight').value='';
     shelfEl.value='';
-    await loadProducts(); showToast(`✅ Added ${name}`);
+    // The server's own words: a name it already knows (BADAM) updates that
+    // product (ALMONDS) instead of adding a second one
+    await loadProducts();
+    const message = String(r.data.message || `✅ Added ${name}`);
+    const listed  = (message.match(/\*([^*]+)\*/) || [])[1] || name;
+    showToast(message.replace(/\*/g, ''), { label: 'Set allergens', fn: () => openProductEditor(listed) });
   } catch { showToast('Failed'); }
 }
 
@@ -3055,7 +3584,7 @@ async function loadLogs(append = false) {
             onclick="event.stopPropagation()" onchange="setLogSelect(${l.id}, this.checked)"/>
           <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap;">
             <span class="log-product">${escHtml(l.product)}</span>
-            <span class="log-qty">× ${l.quantity} · ${escHtml(l.weight)}</span>
+            <span class="log-qty">× ${l.quantity} · ${escHtml(l.weight)}</span>${rollBadge(l.roll_type)}${l.as_typed ? ' <span class="badge badge-ui">as typed</span>' : ''}
           </div>
           <button class="log-reprint" title="Reprint this item" aria-label="Reprint ${escHtml(l.product)} × ${l.quantity}, packed ${escHtml(l.packed_on)}"
             onclick="event.stopPropagation(); reprintFromLog(${l.id})">🔄</button>
@@ -3241,7 +3770,7 @@ function queueRowHtml(j) {
     <div class="queue-item ${escHtml(s)}">
       <div class="queue-status">${icon}</div>
       <div class="queue-info">
-        <div class="queue-product">${escHtml(j.product)} × ${escHtml(j.quantity)}${j.test ? ' <span class="badge badge-ui">test</span>' : ''}</div>
+        <div class="queue-product">${escHtml(j.product)} × ${escHtml(j.quantity)}${rollBadge(j.roll_type)}${j.test ? ' <span class="badge badge-ui">test</span>' : ''}</div>
         <div class="queue-detail">
           ${j.weight ? escHtml(j.weight) + ' · ' : ''}${escHtml(when)}${j.batch_no ? ' · Batch: ' + escHtml(j.batch_no) : ''}
           ${j.source === 'telegram' ? ' · <span class="badge badge-telegram">telegram</span>' : ''}
@@ -3369,9 +3898,10 @@ function fillFormFromLogs(logs) {
 
   document.getElementById('jobRows').innerHTML = '';
   document.getElementById('results').innerHTML = '';
-  comboState = {};
+  comboState = {}; typedAs = {}; swapWeight = {};
   rowId = 0;
-  logs.forEach(l => addRow(l.product || '', String(l.quantity ?? ''), weightForForm(l.weight)));
+  // A label printed as typed reprints as typed; anything else gets today's English name
+  logs.forEach(l => addRow(l.product || '', String(l.quantity ?? ''), weightForForm(l.weight), !!l.as_typed));
   ensureTrailingRow();
 
   // Dates: start from defaults, then apply the first row's printed dates where they parse.
@@ -3395,8 +3925,22 @@ function fillFormFromLogs(logs) {
     hideDateNotice();
   }
 
+  // Reprint on the label type it printed on. Older history doesn't record
+  // one, and a selection that mixes types can't share one form.
+  const rolls  = [...new Set(logs.map(l => l.roll_type).filter(Boolean))];
+  const rollSel = document.getElementById('rollType');
+  let rollNote = '';
+  if (rolls.length === 1 && rollSel && [...rollSel.options].some(o => o.value === rolls[0])) {
+    rollSel.value = rolls[0];
+    rollChosen = true;
+    updateRollHint();
+    rollNote = ` on ${rollLabel(rolls[0])}`;
+  } else if (rolls.length > 1) {
+    rollNote = ` — they printed on different label types, check Label Type`;
+  }
+
   refreshAfterChange();
-  showToast(logs.length === 1 ? '📋 Form loaded — edit and print' : `📋 ${logs.length} items loaded — edit and print`);
+  showToast((logs.length === 1 ? '📋 Form loaded' : `📋 ${logs.length} items loaded`) + rollNote + ' — edit and print');
   document.getElementById('printHeading')?.focus({ preventScroll: true });
   window.scrollTo({top: 0, behavior: 'smooth'});
   return true;
@@ -3543,7 +4087,8 @@ async function showPreview(body, caption) {
   msg.textContent = 'Rendering…';
   document.getElementById('previewClose').focus();
   try {
-    const res = await apiFetch(`${API}/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await apiFetch(`${API}/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, roll_type: getRollType() }) });
     if (!res) { closePreview(); return; }
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
@@ -3569,6 +4114,7 @@ function previewRow(id) {
   // The quantity doesn't change the label, so an empty one isn't a reason to refuse
   showPreview({
     line:        wt ? `${prod},1,${wt}` : `${prod},1`,
+    as_typed:    isAsTyped(id),
     hotel:       getSelectedPrintHotel(),
     packed_on:   formatDateForServer(document.getElementById('packedDate')?.value || ''),
     best_before: useByAuto ? '' : formatDateForServer(document.getElementById('bestBeforeDate')?.value || ''),
@@ -3615,7 +4161,7 @@ async function submitIngredientsPrint() {
   }
 
   // Warn if the printer looks offline — jobs still queue, but flag it.
-  if (!await confirmPrinterReady()) return;
+  if (!confirmRollMix() || !await confirmPrinterReady()) return;
 
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
@@ -3625,7 +4171,8 @@ async function submitIngredientsPrint() {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        jobs: [{ line: `${text} ;; i ${qty}` }]
+        jobs: [{ line: `${text} ;; i ${qty}` }],
+        roll_type: getRollType(),
       })
     });
     if (!res) return;
@@ -3704,7 +4251,7 @@ async function submitFssaiPrint() {
   }
 
   // Warn if the printer looks offline — jobs still queue, but flag it.
-  if (!await confirmPrinterReady()) return;
+  if (!confirmRollMix() || !await confirmPrinterReady()) return;
 
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
@@ -3714,7 +4261,8 @@ async function submitFssaiPrint() {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        jobs: [{ line: `${number} ;; f ${qty}` }]
+        jobs: [{ line: `${number} ;; f ${qty}` }],
+        roll_type: getRollType(),
       })
     });
     if (!res) return;
