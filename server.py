@@ -23,6 +23,7 @@ from settings_manager import (
     get_label_text_settings, set_label_text_settings, LABEL_TEXT_DEFAULTS,
     get_default_shelf_months, set_date_settings, DATE_DEFAULTS,
     set_brand_settings, BRAND_DEFAULTS,
+    set_print_settings, PRINT_DEFAULTS,
 )
 from templates_manager import list_templates, save_template, remove_template
 
@@ -183,6 +184,13 @@ def update_app_settings():
     geo_updates = {k: body[k] for k in body if k in GEOMETRY_DEFAULTS}
     if geo_updates:
         applied, err = set_geometry(geo_updates)
+        if err:
+            return jsonify({"error": err}), 400
+
+    # Print darkness and speed (optional)
+    print_updates = {k: body[k] for k in body if k in PRINT_DEFAULTS}
+    if print_updates:
+        applied, err = set_print_settings(print_updates)
         if err:
             return jsonify({"error": err}), 400
 

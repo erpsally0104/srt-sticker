@@ -1161,6 +1161,21 @@ kbd {
       </div>
 
       <div class="card">
+        <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Print Quality</div>
+        <div style="display:flex; gap:8px;">
+          <div style="flex:1;">
+            <label class="form-label" for="setDensity">Darkness (0–15)</label>
+            <input type="number" id="setDensity" min="0" max="15" step="1" inputmode="numeric" pattern="[0-9]*"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" for="setSpeed">Speed (inches/sec, 2–6)</label>
+            <input type="number" id="setSpeed" min="2" max="6" step="1" inputmode="numeric" pattern="[0-9]*"/>
+          </div>
+        </div>
+        <div class="field-note">Sent with every print. Darker and slower prints solid black; too dark and the text starts to bleed. Print a test label after changing these.</div>
+      </div>
+
+      <div class="card">
         <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Small Label Size (single &amp; 2-up)</div>
         <div style="display:flex; gap:8px;">
           <div style="flex:1;">
@@ -1178,6 +1193,17 @@ kbd {
         <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">1-up Roll (single)</div>
         <label class="form-label" for="setSingleVGap">Vertical gap between labels (mm)</label>
         <input type="number" id="setSingleVGap" min="0" max="20" step="0.5" inputmode="decimal"/>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <div style="flex:1;">
+            <label class="form-label" for="setSingleOffX">Move print right (mm)</label>
+            <input type="number" id="setSingleOffX" min="-3" max="3" step="0.25"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" for="setSingleOffY">Move print down (mm)</label>
+            <input type="number" id="setSingleOffY" min="-3" max="3" step="0.25"/>
+          </div>
+        </div>
+        <div class="field-note">Squares the print up on the roll's pre-printed veg mark. Negative moves it left or up; −3 to 3 mm.</div>
       </div>
 
       <div class="card">
@@ -1195,6 +1221,17 @@ kbd {
           </div>
         </div>
         <div id="doubleWidthPreview" class="print-summary" style="margin-top:12px;"></div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <div style="flex:1;">
+            <label class="form-label" for="setDoubleOffX">Move print right (mm)</label>
+            <input type="number" id="setDoubleOffX" min="-3" max="3" step="0.25"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" for="setDoubleOffY">Move print down (mm)</label>
+            <input type="number" id="setDoubleOffY" min="-3" max="3" step="0.25"/>
+          </div>
+        </div>
+        <div class="field-note">Moves the whole row, both labels. Negative moves it left or up; −3 to 3 mm.</div>
       </div>
 
       <div class="card">
@@ -1212,6 +1249,17 @@ kbd {
         <label class="form-label" for="setLargeVGap" style="margin-top:10px;">Vertical gap between labels (mm)</label>
         <input type="number" id="setLargeVGap" min="0" max="20" step="0.5" inputmode="decimal"/>
         <div class="field-note">The layout is designed for 75 × 50 mm. Adjust these only to match the die-cut of your roll: width 70–100 mm, height 49–60 mm.</div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <div style="flex:1;">
+            <label class="form-label" for="setLargeOffX">Move print right (mm)</label>
+            <input type="number" id="setLargeOffX" min="-3" max="3" step="0.25"/>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label" for="setLargeOffY">Move print down (mm)</label>
+            <input type="number" id="setLargeOffY" min="-3" max="3" step="0.25"/>
+          </div>
+        </div>
+        <div class="field-note">Squares the print up on the roll's pre-printed veg mark. Negative moves it left or up; −3 to 3 mm.</div>
       </div>
 
       <div class="card">
@@ -1796,8 +1844,14 @@ const GEOMETRY_FIELDS = {
   setSingleVGap: 'single_vgap_mm', setDoubleVGap: 'double_vgap_mm',
   setDoubleGap: 'double_gap_mm', setDoubleMargin: 'double_margin_mm',
   setLargeW: 'large_width_mm', setLargeH: 'large_height_mm', setLargeVGap: 'large_vgap_mm',
+  setSingleOffX: 'single_offset_x_mm', setSingleOffY: 'single_offset_y_mm',
+  setDoubleOffX: 'double_offset_x_mm', setDoubleOffY: 'double_offset_y_mm',
+  setLargeOffX: 'large_offset_x_mm', setLargeOffY: 'large_offset_y_mm',
 };
 const DATE_FIELDS = { setDefaultShelf: 'default_shelf_months' };
+// Darkness and speed: whole numbers, [name, min, max] as the server checks them
+const PRINT_FIELDS = { setDensity: 'print_density', setSpeed: 'print_speed' };
+const PRINT_LIMITS = { print_density: ['Darkness', 0, 15], print_speed: ['Speed', 2, 6] };
 const LABEL_TEXT_FIELDS = {
   setFssaiNumber: 'fssai_number', setCompanyPrefix: 'company_prefix',
   setCompanyName: 'company_name', setCompanyAddress: 'company_address',
@@ -1819,6 +1873,7 @@ function applySettingsToForm(s) {
   updateRollHint();
   updateSummary();
   Object.entries(GEOMETRY_FIELDS).forEach(([id, key]) => set(id, s[key]));
+  Object.entries(PRINT_FIELDS).forEach(([id, key]) => set(id, s[key]));
   Object.entries(DATE_FIELDS).forEach(([id, key]) => set(id, s[key]));
   if (s.default_shelf_months) defaultShelfMonths = s.default_shelf_months;
   updateShelfDefaultNote();
@@ -1852,7 +1907,9 @@ function settingsDirty() {
     document.getElementById(id).value.trim() !== String(savedSettings[key] ?? ''));
   const dateChanged = Object.entries(DATE_FIELDS).some(([id, key]) =>
     parseInt(document.getElementById(id).value, 10) !== parseInt(savedSettings[key], 10));
-  return geoChanged || textChanged || dateChanged;
+  const printChanged = Object.entries(PRINT_FIELDS).some(([id, key]) =>
+    Number(document.getElementById(id).value) !== Number(savedSettings[key]));
+  return geoChanged || textChanged || dateChanged || printChanged;
 }
 
 // The default label type saves on its own, the moment it is picked: it sits
@@ -1899,6 +1956,13 @@ async function saveGeometry() {
   const shelf = parseInt(document.getElementById('setDefaultShelf').value, 10);
   if (!Number.isInteger(shelf) || shelf < 1 || shelf > 60) { showToast('Default shelf life must be 1–60 months'); return false; }
   payload.default_shelf_months = shelf;
+  for (const [id, key] of Object.entries(PRINT_FIELDS)) {
+    const raw = document.getElementById(id).value.trim();
+    const v = Number(raw);
+    const [name, lo, hi] = PRINT_LIMITS[key];
+    if (raw === '' || !Number.isInteger(v) || v < lo || v > hi) { showToast(`${name} must be a whole number from ${lo} to ${hi}`); return false; }
+    payload[key] = v;
+  }
   payload.roll_type = document.getElementById('setDefaultRoll').value;
   // Only the admin may change the label content, so nobody else sends it
   if (getIsAdmin()) {

@@ -23,16 +23,17 @@
   - `users.json` — Telegram admin + authorized usernames.
   - `products.json` — hotel-grouped product → weight map.
   - `batch.json` — daily batch counter (`{"date": "DDMMYY", "counter": N}`).
-  - `settings.json` — app settings: the default label type `roll_type` (`single` | `double` | `large`) plus print geometry in mm (`label_width_mm`, `label_height_mm`, `single_vgap_mm`, `double_vgap_mm`, `double_gap_mm`, `double_margin_mm`, `large_width_mm`, `large_height_mm`, `large_vgap_mm`), label text, and brand (`brand_name`, `brand_mark`, `customer_care`), all editable from the UI Settings tab.
+  - `settings.json` — app settings: the default label type `roll_type` (`single` | `double` | `large`) plus print geometry in mm (`label_width_mm`, `label_height_mm`, `single_vgap_mm`, `double_vgap_mm`, `double_gap_mm`, `double_margin_mm`, `large_width_mm`, `large_height_mm`, `large_vgap_mm`, and a per-roll print offset `{single,double,large}_offset_{x,y}_mm`, −3 to 3), print quality (`print_density` 0–15, `print_speed` 2–6 in/s), label text, and brand (`brand_name`, `brand_mark`, `customer_care`), all editable from the UI Settings tab.
 - **SQLite** (`users.db`): `users` table (web UI login, bcrypt) and `print_logs` table (audit log). Tables are created on import/startup via `init_db()` / `init_logs_table()`.
 
 ## Printing
 
 - Output is **TSPL** (TSC Printer Language) sent as RAW data to the printer.
 - Default label size is **50mm × 40mm at 203 DPI**. `PRINTER_NAME` in `printer.py` must match the exact Windows printer name. Geometry (label size, gaps, margins) lives in `settings.json` and is applied per-print via `printer._apply_geometry()`, which refreshes the module globals from settings on the single queue-worker thread. The module-level constants are just fallback defaults.
-- Labels are drawn as a Pillow image, converted to a 1-bit TSPL `BITMAP` command, then printed.
+- Labels are drawn as a Pillow image, converted to a 1-bit TSPL `BITMAP` command, then printed. Every job's header sends `SPEED` and `DENSITY` from settings, and the bitmap is moved by the roll's print offset before it is sent (previews are never offset).
 - **Three label types**, chosen per print (default in `settings.json`, set from the UI Settings tab or `/rolltype`): `single` prints one label per row (`SIZE 50 mm, 40 mm`); `double` is a 2-up roll that prints two labels side by side per row (`SIZE 105 mm, 40 mm`, laid out as 2mm margin + 50mm + 1mm gap + 50mm + 2mm margin); `large` prints one 75×50 label per row (`SIZE 75 mm, 50 mm`) with its own layout, `build_large_label_image()`. The queue worker flattens consecutive 2-up jobs and prints them two per row, so two *different* products can share a row; an odd final label prints alone with the right column blank. Ingredients and FSSAI logo stickers size themselves to whichever label they are printed on.
 - The large label's brand uses Copperplate Gothic Bold (an MS Office font), falling back to Georgia Bold (ships with Windows).
+- All other label text uses **Bahnschrift** (a variable font in Windows 10 and later), falling back to Arial. A face is a `(file, style)` pair passed to `printer.get_font()`, e.g. `TEXT_BOLD_SC = (FONT_TEXT, "Bold SemiCondensed")`. Product names go through `_draw_name()`: narrowed through Bold → SemiCondensed → Condensed before shrinking, a trailing bracketed familiar name set at 0.7×, and squeezed sideways as a last resort, so a name never leaves its box. Net weights go through `_weight_parts()`, which sets the unit at 0.65× the number.
 
 ## Configuration that must be edited per-deployment
 

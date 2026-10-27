@@ -16,7 +16,7 @@ Flat, single-directory Python project. All modules live in the repo root; there 
 | `product_catalog.py` | Seed table of English names, aliases and allergens, and the one-time migration that applies it (`python product_catalog.py` dry-runs it). |
 | `templates_manager.py` | Saved ingredient texts over `ingredient_templates.json`. |
 | `user_manager.py` | Telegram auth over `users.json` (admin + authorized users). |
-| `settings_manager.py` | App settings over `settings.json`: the default label type `roll_type` (`single` / `double` / `large`), print geometry (small and large label sizes, gaps, margins), `default_shelf_months` (the Use By fallback), label text and brand settings, each validated. |
+| `settings_manager.py` | App settings over `settings.json`: the default label type `roll_type` (`single` / `double` / `large`), print geometry (small and large label sizes, gaps, margins, per-roll print offsets), print darkness and speed, `default_shelf_months` (the Use By fallback), label text and brand settings, each validated. |
 | `auth.py` | Web UI auth: SQLite users, bcrypt, JWT access/refresh tokens. |
 | `logger.py` | Print audit log in the `print_logs` SQLite table. |
 | `index.html`, `ui.html`, `sw.js`, `manifest.json`, `icon.png` | PWA web front-end assets. |

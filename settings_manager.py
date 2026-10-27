@@ -22,6 +22,14 @@ GEOMETRY_DEFAULTS = {
     "large_width_mm":   75,   # large (CRYSTAL CLEAR) sticker width
     "large_height_mm":  50,   # large (CRYSTAL CLEAR) sticker height
     "large_vgap_mm":    2,    # vertical gap between labels on the large roll
+    # Print offset, per roll: moves the whole print right (x) and down (y),
+    # negative for left and up, so it sits square on the pre-printed stock
+    "single_offset_x_mm": 0,
+    "single_offset_y_mm": 0,
+    "double_offset_x_mm": 0,
+    "double_offset_y_mm": 0,
+    "large_offset_x_mm":  0,
+    "large_offset_y_mm":  0,
 }
 
 # (min, max) allowed range for each geometry field, in mm
@@ -37,7 +45,38 @@ GEOMETRY_LIMITS = {
     "large_width_mm":   (70, 100),
     "large_height_mm":  (49, 60),
     "large_vgap_mm":    (0, 20),
+    # Enough to square up a roll. Print moved further than the 1-2 mm the
+    # layouts keep clear at their edges would cut into the text.
+    "single_offset_x_mm": (-3, 3),
+    "single_offset_y_mm": (-3, 3),
+    "double_offset_x_mm": (-3, 3),
+    "double_offset_y_mm": (-3, 3),
+    "large_offset_x_mm":  (-3, 3),
+    "large_offset_y_mm":  (-3, 3),
 }
+
+# How the offsets are named in an error, as the Settings tab labels them
+GEOMETRY_NAMES = {
+    f"{roll}_offset_{axis}_mm": f"{label}: move print {direction}"
+    for roll, label in (("single", "1-up roll"), ("double", "2-up roll"), ("large", "Large label"))
+    for axis, direction in (("x", "right"), ("y", "down"))
+}
+
+# ── Print quality ──────────────────────────────
+# Sent with every job (TSPL DENSITY and SPEED), so labels come out the same
+# whatever the printer was last left at. Darker and slower prints solid
+# black; too dark and the type starts to bleed. Tune both with a test label.
+PRINT_DEFAULTS = {
+    "print_density": 8,   # darkness, 0 (lightest) to 15 (darkest)
+    "print_speed":   3,   # inches per second
+}
+
+# (min, max), whole numbers. The TE244 prints at 2 to 6 inches per second.
+PRINT_LIMITS = {
+    "print_density": (0, 15),
+    "print_speed":   (2, 6),
+}
+PRINT_NAMES = {"print_density": "Darkness", "print_speed": "Print speed"}
 
 # ── Label text defaults ────────────────────────
 # These are all mandatory declarations under FSSAI Reg 5(6)(a), 5(7) and
@@ -85,6 +124,7 @@ RETIRED_KEYS = ("show_fssai", "show_company_line", "company_line")
 DEFAULT_SETTINGS = {
     "roll_type": "single",  # default label type: "single" | "double" | "large"
     **GEOMETRY_DEFAULTS,
+    **PRINT_DEFAULTS,
     **DATE_DEFAULTS,
     **LABEL_TEXT_DEFAULTS,
     **BRAND_DEFAULTS,
@@ -195,8 +235,55 @@ def set_geometry(updates: dict):
             return None, f"Invalid value for {key}"
         lo, hi = GEOMETRY_LIMITS[key]
         if val < lo or val > hi:
-            return None, f"{key.replace('_mm','').replace('_',' ')} must be between {lo} and {hi} mm"
+            name = GEOMETRY_NAMES.get(key) or key.replace('_mm', '').replace('_', ' ')
+            return None, f"{name} must be between {lo} and {hi} mm"
         val = int(val) if float(val).is_integer() else val
+        data[key] = val
+        applied[key] = val
+    _save(data)
+    return applied, None
+
+
+def get_print_offset(roll: str) -> tuple:
+    """(right, down) in mm that the roll's print is moved by, clamped to range."""
+    geo = get_geometry()
+    return geo.get(f"{roll}_offset_x_mm", 0), geo.get(f"{roll}_offset_y_mm", 0)
+
+
+# ── Print quality settings ────────────────────────
+def get_print_settings() -> dict:
+    """Darkness and speed for the print job, as whole numbers clamped to range."""
+    data = _load()
+    out = {}
+    for key, default in PRINT_DEFAULTS.items():
+        lo, hi = PRINT_LIMITS[key]
+        try:
+            val = int(data.get(key, default))
+        except (TypeError, ValueError):
+            val = default
+        out[key] = max(lo, min(hi, val))
+    return out
+
+
+def set_print_settings(updates: dict):
+    """
+    Update the darkness and speed. Returns (applied_dict, None) on success or
+    (None, error_message) if a value is not a whole number in range.
+    """
+    if not updates:
+        return {}, None
+    data = _load()
+    applied = {}
+    for key, raw in updates.items():
+        if key not in PRINT_DEFAULTS:
+            continue
+        lo, hi = PRINT_LIMITS[key]
+        try:
+            val = int(str(raw).strip())
+        except (TypeError, ValueError):
+            val = None
+        if val is None or not lo <= val <= hi:
+            return None, f"{PRINT_NAMES[key]} must be a whole number from {lo} to {hi}"
         data[key] = val
         applied[key] = val
     _save(data)

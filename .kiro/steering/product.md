@@ -19,7 +19,7 @@ Both front-ends share the same parsing, printing, batch-numbering, and queue log
 - FSSAI license number and company address
 - "Not For Retail Sale | For Institutional Sale Only"
 
-The **large 75 × 50 mm label** adds the registered brand **CRYSTAL CLEAR®** (white on black across the top, beside the pre-printed green veg mark), a storage line, and a customer care line. Its brand name, ® / ™ / none, and customer care contact are admin-only settings.
+The **large 75 × 50 mm label** adds the registered brand **CRYSTAL CLEAR®** (black on white in a double frame across the top, beside the pre-printed green veg mark), a storage line, and a customer care line. Its brand name, ® / ™ / none, and customer care contact are admin-only settings.
 
 There is also an **ingredients-only** sticker type that fills the label with auto-sized ingredient text, and an **FSSAI logo** sticker type that prints only the FSSAI logo with a 14-digit licence number beneath it (`13620011000563 ;; f 5` on Telegram). Neither takes a batch number or appears in the print history.
 
