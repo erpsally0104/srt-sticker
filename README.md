@@ -50,6 +50,58 @@ python bot.py
 
 ---
 
+## Document printing (Docs tab)
+
+The **Docs** tab in the web UI prints a PDF, a photo, or a Word / Excel / PowerPoint file on the
+shop's office printer (the HP), from anywhere the web UI opens. Files print one at a time,
+separately from labels, and never on the label printer.
+
+### Setup on the shop computer
+1. `pip install -r requirements.txt` (adds `pypdfium2`, which draws the PDF pages).
+2. For Word, Excel and PowerPoint files, install **LibreOffice** (free, from libreoffice.org).
+   Without it, PDFs and photos still print, and the Docs tab says the other files need it.
+3. Install the HP printer in Windows. The Docs tab uses the first printer with "HP" in its name;
+   pick another one under **Settings → Document Printer** if that is wrong.
+
+### Keeping the printer reachable while it sleeps
+An HP printer on Wi-Fi goes to sleep after a few minutes without work. Sleep itself is fine.
+These steps stop it from dropping off the network or switching itself off:
+
+1. **Fixed address.** Reserve the printer's IP address in the router (DHCP reservation), so it
+   keeps the same address after every restart.
+2. **Standard TCP/IP port.** In Windows: Printers & scanners → the HP → Printer properties → Ports.
+   If the ticked port starts with `WSD`, click **Add Port → Standard TCP/IP Port**, enter the
+   printer's IP address, and tick the new port. WSD ports lose the printer when it sleeps.
+   Then **Configure Port** → untick **SNMP Status Enabled**, so Windows doesn't mark a sleeping
+   printer offline.
+3. **Never shut down.** Open the printer's own web page (type its IP address into a browser) and
+   find the energy or power settings (the exact names vary by model and firmware). Set
+   **Shut Down After Inactivity** to **Never**, or turn on **Delay Shutdown When Ports Are Active**,
+   and set **Sleep After Inactivity** to the longest time offered. The same settings are on the
+   printer's screen under Setup → Energy Settings. Once the printer has shut down, nothing can
+   wake it over the network.
+4. **Firmware.** Install the printer's firmware updates (from its web page or its screen).
+5. If it still drops off Wi-Fi while asleep, connect it to the router with an **Ethernet** cable,
+   or to the shop computer by **USB**. Wired connections don't have this Wi-Fi sleep problem.
+6. The shop computer must not sleep either (Windows Settings → System → Power → Sleep: Never),
+   or the bot, the server and the tunnel stop with it.
+
+What the server does about sleep:
+- Before each file it knocks on the printer (opens a TCP connection to its print port) until the
+  printer answers, for up to 45 seconds, then sends the file to Windows. If the printer never
+  answered, Windows keeps the file and prints it as soon as the printer is back, and the Docs tab
+  shows it waiting.
+- Every 2 minutes it knocks again (Settings → Document Printer → Keep-awake check; 0 turns it off).
+  This keeps the printer's Wi-Fi connection in use, and the Docs tab shows when the printer
+  stopped answering. The **Wake** button on the Docs tab knocks straight away.
+- It follows each file in the Windows print queue until the printer has taken it, and the Docs
+  tab says why a file is waiting (printer asleep, out of paper, paused).
+
+Limits: 25 MB per file, 1 to 99 copies, 300 pages per file. Landscape pages are turned to fit
+the paper, pages bigger than the paper are shrunk to fit it, and photos fill the page.
+
+---
+
 ## Usage
 
 ### Print a label

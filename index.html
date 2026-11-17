@@ -871,6 +871,28 @@ kbd {
   font-size: 0.88rem; line-height: 1.4; cursor: pointer; padding: 6px 0;
 }
 .check-row input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--saffron); flex-shrink: 0; cursor: pointer; }
+/* ── Docs tab ───────────────────────────────── */
+.doc-printer { display: flex; align-items: center; gap: 10px; }
+.doc-printer .status-dot { width: 12px; height: 12px; }
+.status-dot.sleep { background: #f5a524; }
+.doc-printer-info { flex: 1; min-width: 0; }
+.doc-printer-name { font-weight: 700; font-size: 0.9rem; overflow-wrap: anywhere; }
+.doc-printer-msg { font-size: 0.78rem; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+#docPrinterTips div + div { margin-top: 6px; }
+.file-drop {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; min-height: 120px; padding: 1rem; text-align: center; cursor: pointer;
+  border: 2.5px dashed #bbb; background: var(--paper);
+}
+/* The real input covers the box: a tap opens the picker and a dropped file lands on it */
+.file-drop input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.file-drop:focus-within, .file-drop.drag { border-color: var(--saffron); background: #fff8f0; }
+.file-drop.has-file { border-style: solid; border-color: var(--green); background: var(--green-light); }
+.file-drop.bad { border-style: solid; border-color: var(--red); background: var(--red-light); }
+.file-drop-icon { font-size: 1.8rem; line-height: 1; }
+.file-drop-text { font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
+.file-drop-text small { display: block; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.queue-item.sent { border-color: #f5a524; background: #fffbeb; }
 </style>
 </head>
 <body>
@@ -989,7 +1011,7 @@ kbd {
         <button class="btn-secondary" onclick="resetAll()">↺ RESET</button>
         <div class="kbd-hint">
           <kbd>Enter</kbd> next field · <kbd>↑</kbd><kbd>↓</kbd> pick product · <kbd>Esc</kbd> keep what you typed<br>
-          <kbd>Ctrl</kbd>+<kbd>Enter</kbd> print · <kbd>Alt</kbd>+<kbd>N</kbd> new item · <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>5</kbd> switch tabs
+          <kbd>Ctrl</kbd>+<kbd>Enter</kbd> print · <kbd>Alt</kbd>+<kbd>N</kbd> new item · <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>6</kbd> switch tabs
         </div>
       </div>
 
@@ -1143,6 +1165,50 @@ kbd {
         <div id="queueContainer">
           <div class="queue-empty">Loading...</div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Docs ── -->
+    <div class="tab-page" id="tab-docs">
+      <div class="section-title" tabindex="-1">Print Documents</div>
+
+      <!-- The office printer, not the label printer -->
+      <div class="card">
+        <div class="doc-printer">
+          <div class="status-dot" id="docDot"></div>
+          <div class="doc-printer-info">
+            <div class="doc-printer-name" id="docPrinterName">Office printer</div>
+            <div class="doc-printer-msg" id="docPrinterMsg" aria-live="polite">Checking...</div>
+          </div>
+          <button type="button" class="btn-small" id="docWakeBtn" onclick="wakeDocPrinter()"
+            title="Knock on the printer to wake it, then check it again">🔔 Wake</button>
+        </div>
+        <div class="roll-hint" id="docPrinterTips" hidden></div>
+      </div>
+
+      <div class="card">
+        <label class="file-drop" id="docDrop">
+          <input type="file" id="docFile" onchange="onDocFileChange()" aria-describedby="docTypesNote"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.txt,.csv,image/*"/>
+          <span class="file-drop-icon" id="docDropIcon" aria-hidden="true">📄</span>
+          <span class="file-drop-text" id="docDropText">Tap to choose a file<small>or drop it here</small></span>
+        </label>
+        <div class="field-note" id="docTypesNote">PDF, photos, Word, Excel and PowerPoint, up to 25 MB.</div>
+        <div class="row-error" id="docFileError" role="alert"></div>
+        <div class="form-group" style="margin-top:0.75rem; margin-bottom:0;">
+          <label class="form-label" for="docCopies">Copies</label>
+          <input type="number" id="docCopies" min="1" max="99" value="1" inputmode="numeric" pattern="[0-9]*"
+            enterkeyhint="go" onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submitDocPrint();}"/>
+        </div>
+        <button class="btn-primary" id="docPrintBtn" onclick="submitDocPrint()" style="margin-top:1rem;" disabled>
+          <span id="docPrintBtnContent">🖨️ PRINT DOCUMENT</span>
+        </button>
+        <button class="btn-secondary" onclick="resetDoc()">↺ RESET</button>
+      </div>
+
+      <div class="section-title">Recent Documents</div>
+      <div class="card">
+        <div id="docJobs"><div class="queue-empty">Loading...</div></div>
       </div>
     </div>
 
@@ -1339,6 +1405,19 @@ kbd {
       <button class="btn-secondary" id="testPrintBtn" onclick="testPrint()">🧪 PRINT TEST LABEL</button>
       <div class="field-note">Prints one label ("TEST" in place of the batch number) on the type picked above, with the saved settings, to check the layout lines up with the roll. It does not use a batch number or show in History.</div>
 
+      <div class="section-title">Document Printer</div>
+      <div class="card">
+        <label class="form-label" for="setDocPrinter">Printer for the Docs tab</label>
+        <select id="setDocPrinter" onchange="saveDocSetting('doc_printer')">
+          <option value="">Automatic: the HP printer</option>
+        </select>
+        <div class="field-note">Saved as soon as you pick it. Files from the Docs tab print here, never on the label printer.</div>
+        <label class="form-label" for="setDocKeepalive" style="margin-top:12px;">Keep-awake check (minutes, 0 = off)</label>
+        <input type="number" id="setDocKeepalive" min="0" max="30" step="1" inputmode="numeric" pattern="[0-9]*"
+          onchange="saveDocSetting('doc_keepalive_minutes')"/>
+        <div class="field-note">The shop computer knocks on the printer over Wi-Fi this often. That keeps its connection in use and lets the Docs tab show when it stops answering. It can't switch on a printer that has shut itself down, so set the printer never to shut down (README, Document printer).</div>
+      </div>
+
       <div class="section-title">This Device</div>
       <div class="card">
         <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">When a print fails</div>
@@ -1397,6 +1476,10 @@ kbd {
     </button>
     <button class="nav-tab" id="nav-history" onclick="switchTab('history')">
       <span class="nav-tab-icon">📋</span>History
+    </button>
+    <button class="nav-tab" id="nav-docs" onclick="switchTab('docs')">
+      <span class="nav-tab-icon">📄</span>Docs
+      <span class="nav-badge" id="docsBadge" hidden></span>
     </button>
     <button class="nav-tab" id="nav-settings" onclick="switchTab('settings')">
       <span class="nav-tab-icon">⚙️</span>Settings
@@ -1505,6 +1588,12 @@ function showLogin() {
   queueJobs = null;
   seenFailed.clear();
   updateQueueBadge(0, 0);
+  // ...and the Docs tab's
+  clearTimeout(docPollTimer);
+  docPollSeq++;
+  docInfo = null;
+  docSeenFailed.clear();
+  updateDocsBadge(0, 0);
   closePreview();
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('mainApp').style.display     = 'none';
@@ -1573,6 +1662,7 @@ async function initApp() {
       if (document.visibilityState !== 'visible' || !getAccessToken()) return;
       checkDayRollover();
       pollQueue();
+      if (isTabActive('docs') || docActiveJobs().length) pollDocs();
     });
     setInterval(checkDayRollover, 60 * 1000);
     document.addEventListener('keydown', onGlobalKey);
@@ -1609,7 +1699,7 @@ function onGlobalKey(e) {
   // Alt+1…5 switch tabs, Alt+N starts a new item. e.code, not e.key: on a
   // Mac, Option+digit types a symbol.
   if (e.altKey && !e.ctrlKey && !e.metaKey) {
-    const digit = /^Digit([1-5])$/.exec(e.code);
+    const digit = /^Digit([1-6])$/.exec(e.code);
     if (digit) { e.preventDefault(); switchTab(TAB_ORDER[digit[1] - 1]); return; }
     if (e.code === 'KeyN') {
       e.preventDefault();
@@ -1689,6 +1779,7 @@ function updateConnUI() {
     const b = document.getElementById(id);
     if (b && !b.querySelector('.spinner')) b.disabled = offline;
   });
+  updateDocPrintBtn();
 }
 
 function retryConnection() {
@@ -1892,6 +1983,8 @@ function applySettingsToForm(s) {
   const fssaiEl = document.getElementById('fssaiNumber');
   if (fssaiEl && !fssaiEl.value && s.fssai_number) fssaiEl.value = s.fssai_number;
   updateDoubleWidthPreview();
+  set('setDocKeepalive', s.doc_keepalive_minutes);
+  setDocPrinterChoice(s.doc_printer || '');
 }
 
 function updateShelfDefaultNote() {
@@ -2361,7 +2454,7 @@ function onBestBeforeChange() {
 }
 
 // ── Tabs ─────────────────────────────────────
-const TAB_ORDER = ['print', 'queue', 'products', 'history', 'settings'];
+const TAB_ORDER = ['print', 'queue', 'products', 'history', 'docs', 'settings'];
 
 function switchTab(name) {
   if (!TAB_ORDER.includes(name)) return;
@@ -2379,7 +2472,8 @@ function switchTab(name) {
   if (name === 'history') loadLogs();
   if (name === 'products') loadProducts();
   if (name === 'queue') { renderQueue(); pollQueue(); }
-  if (name === 'settings') loadSettings();
+  if (name === 'docs') { renderDocs(); pollDocs(); }
+  if (name === 'settings') loadSettings().then(loadDocPrinters);
 }
 
 // ── Status ───────────────────────────────────
@@ -4371,6 +4465,328 @@ function resetFssai() {
   document.getElementById('fssaiNumber').classList.remove('error');
   document.getElementById('fssaiQty').classList.remove('error');
   showToast('Cleared');
+}
+
+// ── Docs: files on the office printer ─────────
+// Files print on the shop's office printer (the HP), never on the label
+// printer. The server converts and prints them one at a time; this tab
+// uploads them, shows the printer's state and follows each file until the
+// printer has taken it. Like the label queue it only polls while a file is
+// on its way, since every poll is a request through the ngrok tunnel.
+const DOC_OFFICE_EXT = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'txt', 'csv'];
+const DOC_IMAGE_EXT  = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'webp'];
+const DOC_EXT        = ['pdf', ...DOC_IMAGE_EXT, ...DOC_OFFICE_EXT];
+const DOC_ACTIVE     = ['queued', 'converting', 'printing', 'sent'];
+const DOC_STATUS = {   // icon, and the words for a job with no detail of its own
+  queued:     ['⏳', 'Waiting its turn'],
+  converting: ['🔄', 'Converting to PDF…'],
+  printing:   ['🔄', 'Sending to the printer…'],
+  sent:       ['🖨️', 'At the printer'],
+  done:       ['✅', 'Printed'],
+  failed:     ['❌', 'Failed'],
+  cancelled:  ['🚫', 'Cancelled'],
+};
+let docInfo        = null;   // last /api/docs answer: { jobs, printer, limits }
+let docPollTimer   = null;
+let docPollSeq     = 0;
+let docPrinterList = null;   // { printers, auto } from the shop computer, for Settings
+const docSeenFailed = new Set();
+
+const docExt        = name => (/\.([^.]+)$/.exec(String(name || ''))?.[1] || '').toLowerCase();
+const docLimits     = () => ({ max_mb: 25, max_copies: 99, ...(docInfo?.limits || {}) });
+const docActiveJobs = () => (docInfo?.jobs || []).filter(j => DOC_ACTIVE.includes(j.status));
+
+function fmtBytes(n) {
+  return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+}
+
+function docIcon(ext) {
+  if (ext === 'pdf') return '📕';
+  if (DOC_IMAGE_EXT.includes(ext)) return '🖼️';
+  if (['xls', 'xlsx', 'ods', 'csv'].includes(ext)) return '📊';
+  if (['ppt', 'pptx', 'odp'].includes(ext)) return '📽️';
+  return '📝';
+}
+
+// Why the server would refuse this file, so the answer comes before the upload, not after
+function docFileError(file) {
+  if (!file) return '';
+  const ext = docExt(file.name);
+  if (!DOC_EXT.includes(ext)) {
+    return ext === 'heic' || ext === 'heif'
+      ? "HEIC photos can't be printed. Save or share it as JPG, then choose that."
+      : "This kind of file can't be printed. Choose a PDF, a photo (JPG, PNG), or a Word, Excel or PowerPoint file.";
+  }
+  if (DOC_OFFICE_EXT.includes(ext) && docInfo?.printer?.office_ok === false) {
+    return 'Word, Excel and PowerPoint files need LibreOffice on the shop computer. Save it as PDF and choose that instead.';
+  }
+  const { max_mb } = docLimits();
+  if (file.size > max_mb * 1024 * 1024) return `This file is ${fmtBytes(file.size)}. The limit is ${max_mb} MB.`;
+  if (file.size === 0) return 'This file is empty.';
+  return '';
+}
+
+function onDocFileChange() {
+  const file = document.getElementById('docFile').files?.[0];
+  const err  = docFileError(file);
+  const drop = document.getElementById('docDrop');
+  drop.classList.toggle('has-file', !!file && !err);
+  drop.classList.toggle('bad', !!err);
+  document.getElementById('docDropIcon').textContent = !file ? '📄' : err ? '⚠️' : docIcon(docExt(file.name));
+  document.getElementById('docDropText').innerHTML = file
+    ? `${escHtml(file.name)}<small>${fmtBytes(file.size)} · tap to change</small>`
+    : 'Tap to choose a file<small>or drop it here</small>';
+  document.getElementById('docFileError').textContent = err;
+  updateDocPrintBtn();
+}
+
+function updateDocPrintBtn() {
+  const btn = document.getElementById('docPrintBtn');
+  if (!btn || btn.querySelector('.spinner')) return;
+  const file = document.getElementById('docFile').files?.[0];
+  btn.disabled = !file || !!docFileError(file) || !navigator.onLine;
+}
+
+function resetDoc() {
+  document.getElementById('docFile').value = '';
+  document.getElementById('docCopies').value = '1';
+  document.getElementById('docCopies').classList.remove('error');
+  onDocFileChange();
+}
+
+// The box shows a dropped file is welcome while it is dragged over
+(() => {
+  const drop = document.getElementById('docDrop');
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, () => drop.classList.add('drag')));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, () => drop.classList.remove('drag')));
+})();
+
+async function pollDocs() {
+  const seq = ++docPollSeq;
+  clearTimeout(docPollTimer);
+  docPollTimer = null;
+  let data;
+  try {
+    const res = await apiFetch(`${API}/docs`);
+    if (!res) return;
+    if (!res.ok) throw new Error();
+    data = await res.json();
+  } catch {
+    if (seq !== docPollSeq) return;
+    if (isTabActive('docs') && !docInfo) {
+      document.getElementById('docJobs').innerHTML = '<div class="queue-empty">⚠️ Could not load. Is the server running?</div>';
+      document.getElementById('docPrinterMsg').textContent = 'Cannot reach the server';
+    }
+    if (docActiveJobs().length) docPollTimer = setTimeout(pollDocs, 10000);
+    return;
+  }
+  if (seq !== docPollSeq) return;   // a newer poll already started
+
+  const firstLoad = docInfo === null;
+  docInfo = data;
+  announceDocFailures((data.jobs || []).filter(j => j.status === 'failed'), firstLoad);
+  const active = docActiveJobs();
+  updateDocsBadge(active.length);
+  if (isTabActive('docs')) renderDocs();
+  if (active.length) {
+    // A file at a sleeping printer can wait for hours: look at it less often
+    const moving  = active.some(j => j.status !== 'sent');
+    const visible = document.visibilityState === 'visible';
+    docPollTimer = setTimeout(pollDocs, moving ? (visible ? 2500 : 10000) : (visible ? 10000 : 30000));
+  }
+}
+
+function announceDocFailures(failed, firstLoad) {
+  const fresh = failed.filter(j => !docSeenFailed.has(j.id));
+  fresh.forEach(j => docSeenFailed.add(j.id));
+  if (firstLoad || !fresh.length) return;
+  const what = fresh.length === 1 ? `${fresh[0].name} failed to print` : `${fresh.length} documents failed to print`;
+  alertFailure(`${what}. ${fresh[0].error || ''}`);
+  if (!isTabActive('docs')) showToast(`❌ ${what}`, { label: 'View', fn: () => switchTab('docs') });
+}
+
+function updateDocsBadge(active) {
+  const b = document.getElementById('docsBadge');
+  if (!b) return;
+  b.hidden = !active;
+  b.textContent = active;
+  const label = `${active} document${active !== 1 ? 's' : ''} printing`;
+  b.setAttribute('aria-label', label);
+  b.title = label;
+}
+
+function renderDocPrinter(p) {
+  const dot = document.getElementById('docDot');
+  if (!p) { dot.className = 'status-dot'; return; }
+  dot.className = 'status-dot ' + (p.state === 'ready' ? 'online' : p.state === 'asleep' ? 'sleep' : 'offline');
+  document.getElementById('docPrinterName').textContent =
+    p.name ? p.name + (p.auto ? ' (picked automatically)' : '') : 'No office printer';
+  let text = p.message || '';
+  if (p.state === 'asleep' && p.since) text += ` Since ${p.since}.`;
+  else if (p.reachable && p.checked_at) text += ` Checked ${p.checked_at}.`;
+  document.getElementById('docPrinterMsg').textContent = text;
+  const tips = document.getElementById('docPrinterTips');
+  tips.innerHTML = (p.tips || []).map(t => `<div>💡 ${escHtml(t)}</div>`).join('');
+  tips.hidden = !(p.tips || []).length;
+}
+
+function docRowHtml(j) {
+  const [icon, words] = DOC_STATUS[j.status] || ['•', j.status];
+  const live   = DOC_ACTIVE.includes(j.status);
+  const amount = j.pages ? `${j.pages} page${j.pages !== 1 ? 's' : ''} × ${j.copies}`
+                         : `${j.copies} cop${j.copies !== 1 ? 'ies' : 'y'}`;
+  const when   = j.finished_at ? `${words} ${j.finished_at}` : `sent ${j.created_at}`;
+  const cls    = j.status === 'converting' ? 'printing' : j.status;
+  return `
+    <div class="queue-item ${escHtml(cls)}">
+      <div class="queue-status">${icon}</div>
+      <div class="queue-info">
+        <div class="queue-product" style="overflow-wrap:anywhere;">${escHtml(j.name)}</div>
+        <div class="queue-detail">${escHtml(amount)} · ${escHtml(when)} · ${escHtml(j.username)}</div>
+        ${j.status === 'failed' ? `<div class="queue-error">${escHtml(j.error || 'Printing failed')}</div>`
+          : live ? `<div class="queue-detail">${escHtml(j.detail || words)}</div>` : ''}
+      </div>
+      ${live ? `<button class="queue-cancel" onclick="cancelDocJob('${escHtml(j.id)}')" title="Cancel"
+        aria-label="Cancel ${escHtml(j.name)}">✕</button>` : ''}
+    </div>`;
+}
+
+function renderDocs() {
+  const { max_mb, max_copies } = docLimits();
+  const p = docInfo?.printer;
+  renderDocPrinter(p);
+  document.getElementById('docTypesNote').textContent = p?.office_ok === false
+    ? `PDF and photos (JPG, PNG), up to ${max_mb} MB. Word and Excel files need LibreOffice on the shop computer; until then, save them as PDF.`
+    : `PDF, photos, Word, Excel and PowerPoint, up to ${max_mb} MB.`;
+  document.getElementById('docCopies').max = max_copies;
+  const c = document.getElementById('docJobs');
+  if (!docInfo) { c.innerHTML = '<div class="queue-empty">Loading...</div>'; return; }
+  const jobs = docInfo.jobs || [];
+  c.innerHTML = jobs.length ? jobs.map(docRowHtml).join('') : '<div class="queue-empty">📭 No documents printed yet.</div>';
+  if (document.getElementById('docFile').files?.[0]) onDocFileChange();   // re-checked against what the server takes
+}
+
+async function submitDocPrint() {
+  const fileEl   = document.getElementById('docFile');
+  const copiesEl = document.getElementById('docCopies');
+  const btn      = document.getElementById('docPrintBtn');
+  const content  = document.getElementById('docPrintBtnContent');
+  const file     = fileEl.files?.[0];
+  const { max_copies } = docLimits();
+  copiesEl.classList.remove('error');
+
+  if (!file) { showToast('Choose a file to print'); return; }
+  const err = docFileError(file);
+  if (err) { showToast(err); return; }
+  const copies = Number(copiesEl.value);
+  if (!Number.isInteger(copies) || copies < 1 || copies > max_copies) {
+    copiesEl.classList.add('error');
+    showToast(`Copies must be 1–${max_copies}`);
+    return;
+  }
+  if (copies > 10 && !confirm(`⚠️ Print ${copies} copies of ${file.name}?`)) return;
+  // A sleeping printer is normal and handled on the shop computer; a fault is worth a question
+  const p = docInfo?.printer;
+  if (p?.state === 'error' && !confirm(`⚠️ ${p.message}\n\nSend it anyway? It waits until that is sorted out.`)) return;
+
+  btn.disabled = true;
+  content.innerHTML = '<div class="spinner"></div>';
+  try {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    fd.append('copies', String(copies));
+    const res = await apiFetch(`${API}/docs/print`, { method: 'POST', body: fd });
+    if (!res) return;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data.error || (res.status === 413 ? 'That file is too large' : 'Could not send the file')); return; }
+    showToast(`📄 ${file.name} is on its way to the printer`);
+    resetDoc();
+    pollDocs();
+  } catch { showToast('❌ Cannot reach server'); }
+  finally { content.innerHTML = '🖨️ PRINT DOCUMENT'; updateDocPrintBtn(); }
+}
+
+async function cancelDocJob(id) {
+  try {
+    const r = await postJson('/docs/cancel', { job_id: id });
+    if (!r) return;
+    showToast(!r.ok ? (r.data.error || 'Could not cancel')
+      : r.data.message === 'Stopping' ? 'Stopping after the page being sent' : '✅ Cancelled');
+  } catch { showToast('Could not cancel'); }
+  pollDocs();
+}
+
+// Knocks on the printer for up to 15 seconds on the shop computer, which wakes it if anything can
+async function wakeDocPrinter() {
+  const btn = document.getElementById('docWakeBtn');
+  btn.disabled = true;
+  document.getElementById('docDot').className = 'status-dot';
+  document.getElementById('docPrinterMsg').textContent = 'Knocking on the printer…';
+  try {
+    const r = await postJson('/docs/wake', {});
+    if (!r) return;
+    if (!r.ok) throw new Error(r.data.error);
+    const p = r.data.printer;
+    if (docInfo) docInfo.printer = p;
+    renderDocPrinter(p);
+    showToast(p.state === 'ready' ? '🟢 The printer is answering' : (p.message || 'The printer is not answering'));
+  } catch (e) {
+    renderDocPrinter(docInfo?.printer);
+    showToast(e?.message || '❌ Cannot reach server');
+  } finally { btn.disabled = false; }
+}
+
+// ── Settings: document printer ─────────────────
+async function loadDocPrinters() {
+  try {
+    const res = await apiFetch(`${API}/docs/printers`);
+    if (!res || !res.ok) return;
+    docPrinterList = await res.json();
+    setDocPrinterChoice(savedSettings?.doc_printer || '');
+  } catch {}
+}
+
+function setDocPrinterChoice(current) {
+  const sel = document.getElementById('setDocPrinter');
+  if (!sel) return;
+  const list  = docPrinterList?.printers || [];
+  const names = current && !list.includes(current) ? [...list, current] : list;
+  const auto  = !docPrinterList ? 'Automatic: the HP printer'
+              : docPrinterList.auto ? `Automatic: ${docPrinterList.auto}` : 'Automatic: no HP printer found';
+  sel.innerHTML = `<option value="">${escHtml(auto)}</option>` + names.map(n =>
+    `<option value="${escHtml(n)}">${escHtml(n)}${docPrinterList && !list.includes(n) ? ' (not installed)' : ''}</option>`).join('');
+  sel.value = current;
+}
+
+// Each field saves on its own, like the default label type: there is no Save button down here
+async function saveDocSetting(key) {
+  const el = document.getElementById(key === 'doc_printer' ? 'setDocPrinter' : 'setDocKeepalive');
+  let value = el.value;
+  if (key === 'doc_keepalive_minutes') {
+    const v = Number(value);
+    if (value.trim() === '' || !Number.isInteger(v) || v < 0 || v > 30) {
+      el.value = savedSettings?.doc_keepalive_minutes ?? 2;
+      showToast('Keep-awake check must be a whole number from 0 to 30');
+      return;
+    }
+    value = v;
+  }
+  try {
+    const r = await postJson('/settings', { [key]: value });
+    if (!r) return;
+    if (!r.ok) throw new Error(r.data.error);
+    savedSettings = { ...savedSettings, [key]: r.data[key] };
+    if (key === 'doc_printer') {
+      docInfo = null;   // its state was the old printer's
+      showToast(`✅ Documents print on ${value || docPrinterList?.auto || 'the HP printer'}`);
+    } else {
+      showToast(value ? `✅ The printer is checked every ${value} min` : '✅ Keep-awake check is off');
+    }
+  } catch (e) {
+    if (key === 'doc_printer') setDocPrinterChoice(savedSettings?.doc_printer || '');
+    else el.value = savedSettings?.doc_keepalive_minutes ?? 2;
+    showToast(e?.message || 'Could not save');
+  }
 }
 
 // ── Toast ─────────────────────────────────────

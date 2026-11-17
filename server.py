@@ -24,11 +24,17 @@ from settings_manager import (
     get_default_shelf_months, set_date_settings, DATE_DEFAULTS,
     set_brand_settings, BRAND_DEFAULTS,
     set_print_settings, PRINT_DEFAULTS,
+    set_doc_settings, DOC_DEFAULTS,
 )
 from templates_manager import list_templates, save_template, remove_template
+from doc_printer import (get_doc_queue, check_printer_choice, printer_choices,
+                         settings_changed as doc_settings_changed, MAX_UPLOAD_MB, MAX_COPIES)
 
 app = Flask(__name__)
 CORS(app)
+# Uploads on the Docs tab. The extra megabyte is the form's own overhead;
+# doc_printer checks the file itself against MAX_UPLOAD_MB.
+app.config["MAX_CONTENT_LENGTH"] = (MAX_UPLOAD_MB + 1) * 1024 * 1024
 
 ALLOWED_ORIGINS = [
     "https://srt-labels.github.io",
@@ -55,7 +61,16 @@ def add_headers(response):
 def options_handler(path):
     return "", 204
 
+
+@app.errorhandler(413)
+def upload_too_large(e):
+    return jsonify({"error": f"The file is too large. The limit is {MAX_UPLOAD_MB} MB."}), 413
+
+
 init_db()
+# Started with the server, not on first use, so the printer keep-alive runs
+# from the moment run.bat starts and not only once someone opens the Docs tab.
+get_doc_queue()
 
 ADMIN_USER = "shubhamagarwal25"
 
@@ -212,6 +227,17 @@ def update_app_settings():
         applied, err = set_brand_settings(brand_updates)
         if err:
             return jsonify({"error": err}), 400
+
+    # Document printer for the Docs tab (optional)
+    doc_updates = {k: body[k] for k in body if k in DOC_DEFAULTS}
+    if doc_updates:
+        err = check_printer_choice(str(doc_updates.get("doc_printer") or ""))
+        if err:
+            return jsonify({"error": err}), 400
+        applied, err = set_doc_settings(doc_updates)
+        if err:
+            return jsonify({"error": err}), 400
+        doc_settings_changed()
 
     return jsonify(get_settings())
 
@@ -530,6 +556,61 @@ def dismiss_queue_jobs():
     if job_id and not count:
         return jsonify({"error": "Job not found or not failed"}), 404
     return jsonify({"message": f"Cleared {count} job(s)", "count": count})
+
+
+# ── Documents (office printer) ──────────────────
+@app.route("/api/docs", methods=["GET"])
+@require_auth
+def api_docs():
+    """Recent document jobs and the office printer's state, in one request through the tunnel."""
+    queue = get_doc_queue()
+    return jsonify({
+        "jobs":    queue.list_all(),
+        "printer": queue.printer_status(),
+        "limits":  {"max_mb": MAX_UPLOAD_MB, "max_copies": MAX_COPIES},
+    })
+
+
+@app.route("/api/docs/print", methods=["POST"])
+@require_auth
+def api_docs_print():
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify({"error": "Choose a file to print"}), 400
+    job, err = get_doc_queue().add(upload, upload.filename,
+                                   request.form.get("copies", "1"), request.username)
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"job": job})
+
+
+@app.route("/api/docs/cancel", methods=["POST"])
+@require_auth
+def api_docs_cancel():
+    body   = request.get_json(silent=True) or {}
+    job_id = (body.get("job_id") or "").strip()
+    if not job_id:
+        return jsonify({"error": "job_id required"}), 400
+    ok, message = get_doc_queue().cancel(job_id)
+    if not ok:
+        return jsonify({"error": message}), 404
+    return jsonify({"message": message})
+
+
+@app.route("/api/docs/wake", methods=["POST"])
+@require_auth
+def api_docs_wake():
+    """Knock on the office printer for a few seconds to wake it, then report its state."""
+    queue = get_doc_queue()
+    queue.check(wait_s=15)
+    return jsonify({"printer": queue.printer_status()})
+
+
+@app.route("/api/docs/printers", methods=["GET"])
+@require_auth
+def api_docs_printers():
+    """Printers installed on the shop computer, for the Settings picker."""
+    return jsonify(printer_choices())
 
 
 # ── Logs endpoint ────────────────────────────────

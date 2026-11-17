@@ -116,6 +116,17 @@ DATE_DEFAULTS = {
 # (min, max) months, for both this default and a product's own shelf life
 SHELF_MONTHS_LIMITS = (1, 60)
 
+# ── Document printer (Docs tab) ────────────────
+# The office printer the Docs tab prints files on, and how often the server
+# knocks on it over the network. A knock keeps a Wi-Fi printer's connection
+# in use and tells the Docs tab when the printer has stopped answering.
+DOC_DEFAULTS = {
+    "doc_printer":           "",   # Windows printer name; blank = the HP printer, found automatically
+    "doc_keepalive_minutes": 2,    # 0 = off
+}
+
+DOC_KEEPALIVE_LIMITS = (0, 30)   # minutes
+
 # Dropped in the FSSAI compliance pass: the two visibility toggles could
 # produce a label with no licence number or no name and address, and
 # company_line has been split into prefix / name / address above.
@@ -128,6 +139,7 @@ DEFAULT_SETTINGS = {
     **DATE_DEFAULTS,
     **LABEL_TEXT_DEFAULTS,
     **BRAND_DEFAULTS,
+    **DOC_DEFAULTS,
 }
 
 
@@ -320,6 +332,52 @@ def set_date_settings(updates: dict):
             return None, "Default shelf life must be a whole number of months"
         if not lo <= val <= hi:
             return None, f"Default shelf life must be between {lo} and {hi} months"
+        data[key] = val
+        applied[key] = val
+    _save(data)
+    return applied, None
+
+
+# ── Document printer settings ─────────────────────
+def get_doc_settings() -> dict:
+    """The Docs tab's printer name ('' = automatic) and keep-alive minutes, clamped to range."""
+    data = _load()
+    lo, hi = DOC_KEEPALIVE_LIMITS
+    try:
+        minutes = int(data.get("doc_keepalive_minutes", DOC_DEFAULTS["doc_keepalive_minutes"]))
+    except (TypeError, ValueError):
+        minutes = DOC_DEFAULTS["doc_keepalive_minutes"]
+    return {
+        "doc_printer":           str(data.get("doc_printer") or "").strip(),
+        "doc_keepalive_minutes": max(lo, min(hi, minutes)),
+    }
+
+
+def set_doc_settings(updates: dict):
+    """
+    Update the document printer settings. Returns (applied_dict, None) on
+    success or (None, error_message) if a value is invalid. Whether the
+    printer is installed is checked by the caller, which can see Windows.
+    """
+    if not updates:
+        return {}, None
+    data = _load()
+    applied = {}
+    lo, hi = DOC_KEEPALIVE_LIMITS
+    for key, raw in updates.items():
+        if key == "doc_printer":
+            val = str(raw or "").strip()
+            if len(val) > 200:
+                return None, "Printer name is too long"
+        elif key == "doc_keepalive_minutes":
+            try:
+                val = int(str(raw).strip())
+            except (TypeError, ValueError):
+                val = None
+            if val is None or not lo <= val <= hi:
+                return None, f"Keep-awake check must be a whole number of minutes from {lo} to {hi}"
+        else:
+            continue
         data[key] = val
         applied[key] = val
     _save(data)

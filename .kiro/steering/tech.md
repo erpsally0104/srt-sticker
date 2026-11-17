@@ -16,6 +16,8 @@
 - `qrcode` — QR code generation.
 - `python-dateutil` — `relativedelta` for date math.
 - `python-dotenv` — loads `BOT_TOKEN` from `.env`.
+- `pypdfium2` — renders PDF pages for the Docs tab (PDFium is not thread-safe: only the document worker thread calls it).
+- **LibreOffice** (optional, installed on the shop computer, not pip) — converts Word / Excel / PowerPoint / text files to PDF for the Docs tab. Without it those files are refused with a message; PDFs and photos still print.
 
 ## Data stores
 
@@ -23,7 +25,7 @@
   - `users.json` — Telegram admin + authorized usernames.
   - `products.json` — hotel-grouped product → weight map.
   - `batch.json` — daily batch counter (`{"date": "DDMMYY", "counter": N}`).
-  - `settings.json` — app settings: the default label type `roll_type` (`single` | `double` | `large`) plus print geometry in mm (`label_width_mm`, `label_height_mm`, `single_vgap_mm`, `double_vgap_mm`, `double_gap_mm`, `double_margin_mm`, `large_width_mm`, `large_height_mm`, `large_vgap_mm`, and a per-roll print offset `{single,double,large}_offset_{x,y}_mm`, −3 to 3), print quality (`print_density` 0–15, `print_speed` 2–6 in/s), label text, and brand (`brand_name`, `brand_mark`, `customer_care`), all editable from the UI Settings tab.
+  - `settings.json` — app settings: the default label type `roll_type` (`single` | `double` | `large`) plus print geometry in mm (`label_width_mm`, `label_height_mm`, `single_vgap_mm`, `double_vgap_mm`, `double_gap_mm`, `double_margin_mm`, `large_width_mm`, `large_height_mm`, `large_vgap_mm`, and a per-roll print offset `{single,double,large}_offset_{x,y}_mm`, −3 to 3), print quality (`print_density` 0–15, `print_speed` 2–6 in/s), label text, brand (`brand_name`, `brand_mark`, `customer_care`), and the Docs tab's office printer (`doc_printer`, blank = the first HP printer; `doc_keepalive_minutes` 0–30, 0 = off), all editable from the UI Settings tab.
 - **SQLite** (`users.db`): `users` table (web UI login, bcrypt) and `print_logs` table (audit log). Tables are created on import/startup via `init_db()` / `init_logs_table()`.
 
 ## Printing
@@ -33,6 +35,7 @@
 - Labels are drawn as a Pillow image, converted to a 1-bit TSPL `BITMAP` command, then printed. Every job's header sends `SPEED` and `DENSITY` from settings, and the bitmap is moved by the roll's print offset before it is sent (previews are never offset).
 - **Three label types**, chosen per print (default in `settings.json`, set from the UI Settings tab or `/rolltype`): `single` prints one label per row (`SIZE 50 mm, 40 mm`); `double` is a 2-up roll that prints two labels side by side per row (`SIZE 105 mm, 40 mm`, laid out as 2mm margin + 50mm + 1mm gap + 50mm + 2mm margin); `large` prints one 75×50 label per row (`SIZE 75 mm, 50 mm`) with its own layout, `build_large_label_image()`. The queue worker flattens consecutive 2-up jobs and prints them two per row, so two *different* products can share a row; an odd final label prints alone with the right column blank. Ingredients and FSSAI logo stickers size themselves to whichever label they are printed on.
 - The large label's brand uses Copperplate Gothic Bold (an MS Office font), falling back to Georgia Bold (ships with Windows).
+- **Documents (Docs tab)** print on a second, ordinary Windows printer (the office HP) through GDI, not TSPL: each page becomes a bitmap at up to 300 DPI (grayscale on a mono printer), turned to fit the paper's orientation and centred inside its printable area. The driver makes the copies when `DeviceCapabilities` says it can (collated for multi-page files); otherwise the pages are sent once per copy. Before each job the worker knocks on the printer's IP (TCP connect to its print port, then 631 and 80) for up to 45 s to wake it; the IP comes from the Windows port (Standard TCP/IP registry key, an IPP URL, or an IP in the port name), so a WSD port gives no knock. Printers that would open a dialog (`PORTPROMPT:`, `FILE:`, OneNote, Fax) are never offered.
 - All other label text uses **Bahnschrift** (a variable font in Windows 10 and later), falling back to Arial. A face is a `(file, style)` pair passed to `printer.get_font()`, e.g. `TEXT_BOLD_SC = (FONT_TEXT, "Bold SemiCondensed")`. Product names go through `_draw_name()`: narrowed through Bold → SemiCondensed → Condensed before shrinking, a trailing bracketed familiar name set at 0.7×, and squeezed sideways as a last resort, so a name never leaves its box. Net weights go through `_weight_parts()`, which sets the unit at 0.65× the number.
 
 ## Configuration that must be edited per-deployment
