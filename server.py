@@ -562,23 +562,37 @@ def dismiss_queue_jobs():
 @app.route("/api/docs", methods=["GET"])
 @require_auth
 def api_docs():
-    """Recent document jobs and the office printer's state, in one request through the tunnel."""
+    """
+    Recent document jobs and the state of the printer picked on the Docs tab
+    (?printer=, else the default one), in one request through the tunnel.
+    """
     queue = get_doc_queue()
+    printer = request.args.get("printer", "").strip() or None
     return jsonify({
         "jobs":    queue.list_all(),
-        "printer": queue.printer_status(),
+        "printer": queue.printer_status(printer),
         "limits":  {"max_mb": MAX_UPLOAD_MB, "max_copies": MAX_COPIES},
     })
+
+
+# The print options, as the Docs tab's form sends them. A blank printer is the default one.
+DOC_OPTIONS = ("printer", "copies", "pages", "duplex", "color", "orientation")
 
 
 @app.route("/api/docs/print", methods=["POST"])
 @require_auth
 def api_docs_print():
-    upload = request.files.get("file")
-    if upload is None or not upload.filename:
-        return jsonify({"error": "Choose a file to print"}), 400
-    job, err = get_doc_queue().add(upload, upload.filename,
-                                   request.form.get("copies", "1"), request.username)
+    """A file (multipart 'file') or a public link ('url'), with the print options."""
+    queue = get_doc_queue()
+    opts  = {k: request.form.get(k, "") for k in DOC_OPTIONS}
+    url   = (request.form.get("url") or "").strip()
+    if url:
+        job, err = queue.add_link(url, opts, request.username)
+    else:
+        upload = request.files.get("file")
+        if upload is None or not upload.filename:
+            return jsonify({"error": "Choose a file to print, or paste a link"}), 400
+        job, err = queue.add(upload, upload.filename, opts, request.username)
     if err:
         return jsonify({"error": err}), 400
     return jsonify({"job": job})
@@ -600,16 +614,21 @@ def api_docs_cancel():
 @app.route("/api/docs/wake", methods=["POST"])
 @require_auth
 def api_docs_wake():
-    """Knock on the office printer for a few seconds to wake it, then report its state."""
-    queue = get_doc_queue()
-    queue.check(wait_s=15)
-    return jsonify({"printer": queue.printer_status()})
+    """Knock on a printer (body 'printer', else the default) for a few seconds to wake it, then report its state."""
+    body    = request.get_json(silent=True) or {}
+    printer = str(body.get("printer") or "").strip() or None
+    queue   = get_doc_queue()
+    status  = queue.printer_status(printer)
+    if status["name"]:
+        queue.check(status["name"], wait_s=15)
+        status = queue.printer_status(printer)
+    return jsonify({"printer": status})
 
 
 @app.route("/api/docs/printers", methods=["GET"])
 @require_auth
 def api_docs_printers():
-    """Printers installed on the shop computer, for the Settings picker."""
+    """Printers the shop computer can print documents on, what each can do, and the default."""
     return jsonify(printer_choices())
 
 

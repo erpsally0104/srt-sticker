@@ -88,6 +88,7 @@ input[type="search"],
 input[type="number"],
 input[type="password"],
 input[type="date"],
+input[type="url"],
 select {
   width: 100%;
   border: 2px solid var(--border);
@@ -893,6 +894,19 @@ kbd {
 .file-drop-text { font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
 .file-drop-text small { display: block; font-weight: 400; color: var(--muted); margin-top: 2px; }
 .queue-item.sent { border-color: #f5a524; background: #fffbeb; }
+.doc-source { display: flex; border: 2px solid var(--border); margin-bottom: 0.75rem; }
+.doc-source-btn {
+  flex: 1; padding: 9px 8px; border: none; background: #fff; color: var(--ink);
+  font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 0.9rem;
+  cursor: pointer; touch-action: manipulation;
+}
+.doc-source-btn + .doc-source-btn { border-left: 2px solid var(--border); }
+.doc-source-btn.active { background: var(--ink); color: #fff; }
+.doc-source-btn:focus-visible { outline: 3px solid var(--saffron); outline-offset: -3px; }
+.doc-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 8px; margin-top: 0.75rem; }
+.doc-options > div { min-width: 0; }
+.doc-options .form-label { margin-bottom: 6px; }
+.queue-detail.doc-opts { overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -1172,12 +1186,15 @@ kbd {
     <div class="tab-page" id="tab-docs">
       <div class="section-title" tabindex="-1">Print Documents</div>
 
-      <!-- The office printer, not the label printer -->
+      <!-- Which printer (never the label printer), and whether it is answering -->
       <div class="card">
-        <div class="doc-printer">
+        <label class="form-label" for="docPrinterSel">Printer</label>
+        <select id="docPrinterSel" onchange="onDocPrinterChange()">
+          <option value="">Loading printers...</option>
+        </select>
+        <div class="doc-printer" style="margin-top:10px;">
           <div class="status-dot" id="docDot"></div>
           <div class="doc-printer-info">
-            <div class="doc-printer-name" id="docPrinterName">Office printer</div>
             <div class="doc-printer-msg" id="docPrinterMsg" aria-live="polite">Checking...</div>
           </div>
           <button type="button" class="btn-small" id="docWakeBtn" onclick="wakeDocPrinter()"
@@ -1187,19 +1204,67 @@ kbd {
       </div>
 
       <div class="card">
-        <label class="file-drop" id="docDrop">
-          <input type="file" id="docFile" onchange="onDocFileChange()" aria-describedby="docTypesNote"
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.txt,.csv,image/*"/>
-          <span class="file-drop-icon" id="docDropIcon" aria-hidden="true">📄</span>
-          <span class="file-drop-text" id="docDropText">Tap to choose a file<small>or drop it here</small></span>
-        </label>
-        <div class="field-note" id="docTypesNote">PDF, photos, Word, Excel and PowerPoint, up to 25 MB.</div>
-        <div class="row-error" id="docFileError" role="alert"></div>
-        <div class="form-group" style="margin-top:0.75rem; margin-bottom:0;">
-          <label class="form-label" for="docCopies">Copies</label>
-          <input type="number" id="docCopies" min="1" max="99" value="1" inputmode="numeric" pattern="[0-9]*"
-            enterkeyhint="go" onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submitDocPrint();}"/>
+        <div class="doc-source" role="group" aria-label="What to print">
+          <button type="button" class="doc-source-btn active" id="docSrcFile" aria-pressed="true"
+            onclick="setDocSource('file')">📁 File</button>
+          <button type="button" class="doc-source-btn" id="docSrcLink" aria-pressed="false"
+            onclick="setDocSource('link')">🔗 Link</button>
         </div>
+        <div id="docFileWrap">
+          <label class="file-drop" id="docDrop">
+            <input type="file" id="docFile" onchange="onDocFileChange()" aria-describedby="docTypesNote"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.txt,.csv,image/*"/>
+            <span class="file-drop-icon" id="docDropIcon" aria-hidden="true">📄</span>
+            <span class="file-drop-text" id="docDropText">Tap to choose a file<small>or drop it here</small></span>
+          </label>
+          <div class="field-note" id="docTypesNote">PDF, photos, Word, Excel and PowerPoint, up to 25 MB.</div>
+        </div>
+        <div id="docLinkWrap" hidden>
+          <label class="form-label" for="docLink">Public link to the file</label>
+          <input type="url" id="docLink" placeholder="https://…/file.pdf" autocomplete="off" autocapitalize="none"
+            autocorrect="off" spellcheck="false" enterkeyhint="go" oninput="updateDocPrintBtn()"
+            onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submitDocPrint();}"/>
+          <div class="field-note">A link that opens the file itself, like a PDF on a website. Google Drive, Google Docs and Dropbox share links work too, when they are shared with anyone who has the link. The shop computer downloads it, up to 25 MB.</div>
+        </div>
+        <div class="row-error" id="docFileError" role="alert"></div>
+
+        <div class="doc-options">
+          <div>
+            <label class="form-label" for="docCopies">Copies</label>
+            <input type="number" id="docCopies" min="1" max="99" value="1" inputmode="numeric" pattern="[0-9]*"
+              enterkeyhint="go" onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submitDocPrint();}"/>
+          </div>
+          <div>
+            <label class="form-label" for="docPages">Pages</label>
+            <input type="text" id="docPages" placeholder="All" autocomplete="off" autocorrect="off" spellcheck="false"
+              aria-describedby="docPagesNote" enterkeyhint="go" oninput="this.classList.remove('error')"
+              onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submitDocPrint();}"/>
+          </div>
+          <div id="docDuplexWrap" hidden>
+            <label class="form-label" for="docDuplex">Two-sided</label>
+            <select id="docDuplex">
+              <option value="off" selected>Off</option>
+              <option value="long">Flip on long edge</option>
+              <option value="short">Flip on short edge</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="docOrientation">Orientation</label>
+            <select id="docOrientation">
+              <option value="auto" selected>Auto</option>
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </div>
+          <div id="docColorWrap" hidden>
+            <label class="form-label" for="docColor">Colour</label>
+            <select id="docColor">
+              <option value="color" selected>Colour</option>
+              <option value="gray">Black &amp; white</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-note" id="docPagesNote">Pages: e.g. 1-3, 5 or 4- (4 to the end). Blank prints them all. Auto orientation follows the first page and turns any page the other way round to fill the paper.</div>
         <button class="btn-primary" id="docPrintBtn" onclick="submitDocPrint()" style="margin-top:1rem;" disabled>
           <span id="docPrintBtnContent">🖨️ PRINT DOCUMENT</span>
         </button>
@@ -1407,11 +1472,11 @@ kbd {
 
       <div class="section-title">Document Printer</div>
       <div class="card">
-        <label class="form-label" for="setDocPrinter">Printer for the Docs tab</label>
+        <label class="form-label" for="setDocPrinter">Default printer for the Docs tab</label>
         <select id="setDocPrinter" onchange="saveDocSetting('doc_printer')">
           <option value="">Automatic: the HP printer</option>
         </select>
-        <div class="field-note">Saved as soon as you pick it. Files from the Docs tab print here, never on the label printer.</div>
+        <div class="field-note">Saved as soon as you pick it. The Docs tab starts on this printer, and you can pick another there for each file. Documents never print on the label printer.</div>
         <label class="form-label" for="setDocKeepalive" style="margin-top:12px;">Keep-awake check (minutes, 0 = off)</label>
         <input type="number" id="setDocKeepalive" min="0" max="30" step="1" inputmode="numeric" pattern="[0-9]*"
           onchange="saveDocSetting('doc_keepalive_minutes')"/>
@@ -2472,7 +2537,8 @@ function switchTab(name) {
   if (name === 'history') loadLogs();
   if (name === 'products') loadProducts();
   if (name === 'queue') { renderQueue(); pollQueue(); }
-  if (name === 'docs') { renderDocs(); pollDocs(); }
+  // The printer list is fetched once; Settings fetches it again when opened
+  if (name === 'docs') { renderDocs(); (docPrinters ? Promise.resolve() : loadDocPrinters()).then(pollDocs); }
   if (name === 'settings') loadSettings().then(loadDocPrinters);
 }
 
@@ -4467,34 +4533,40 @@ function resetFssai() {
   showToast('Cleared');
 }
 
-// ── Docs: files on the office printer ─────────
-// Files print on the shop's office printer (the HP), never on the label
-// printer. The server converts and prints them one at a time; this tab
-// uploads them, shows the printer's state and follows each file until the
-// printer has taken it. Like the label queue it only polls while a file is
-// on its way, since every poll is a request through the ngrok tunnel.
+// ── Docs: files on an office printer ──────────
+// Files print on one of the shop's office printers (normally the HP), never
+// on the label printer. The server downloads, converts and prints them one
+// at a time; this tab sends each with its print options, shows the picked
+// printer's state and follows the file until the printer has taken it.
+// Like the label queue it only polls while a file is on its way, since every
+// poll is a request through the ngrok tunnel.
 const DOC_OFFICE_EXT = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'txt', 'csv'];
 const DOC_IMAGE_EXT  = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'webp'];
 const DOC_EXT        = ['pdf', ...DOC_IMAGE_EXT, ...DOC_OFFICE_EXT];
-const DOC_ACTIVE     = ['queued', 'converting', 'printing', 'sent'];
+const DOC_ACTIVE     = ['queued', 'downloading', 'converting', 'printing', 'sent'];
 const DOC_STATUS = {   // icon, and the words for a job with no detail of its own
-  queued:     ['⏳', 'Waiting its turn'],
-  converting: ['🔄', 'Converting to PDF…'],
-  printing:   ['🔄', 'Sending to the printer…'],
-  sent:       ['🖨️', 'At the printer'],
-  done:       ['✅', 'Printed'],
-  failed:     ['❌', 'Failed'],
-  cancelled:  ['🚫', 'Cancelled'],
+  queued:      ['⏳', 'Waiting its turn'],
+  downloading: ['⬇️', 'Downloading…'],
+  converting:  ['🔄', 'Converting to PDF…'],
+  printing:    ['🔄', 'Sending to the printer…'],
+  sent:        ['🖨️', 'At the printer'],
+  done:        ['✅', 'Printed'],
+  failed:      ['❌', 'Failed'],
+  cancelled:   ['🚫', 'Cancelled'],
 };
-let docInfo        = null;   // last /api/docs answer: { jobs, printer, limits }
+let docInfo        = null;     // last /api/docs answer: { jobs, printer, limits }
 let docPollTimer   = null;
 let docPollSeq     = 0;
-let docPrinterList = null;   // { printers, auto } from the shop computer, for Settings
+let docPrinters    = null;     // { printers: [{name, color, duplex}], default, auto } from the shop computer
+let docPrinterPick = '';       // printer picked on the Docs tab this session; '' follows the default
+let docSource      = 'file';   // 'file' or 'link'
 const docSeenFailed = new Set();
 
-const docExt        = name => (/\.([^.]+)$/.exec(String(name || ''))?.[1] || '').toLowerCase();
-const docLimits     = () => ({ max_mb: 25, max_copies: 99, ...(docInfo?.limits || {}) });
-const docActiveJobs = () => (docInfo?.jobs || []).filter(j => DOC_ACTIVE.includes(j.status));
+const docExt         = name => (/\.([^.]+)$/.exec(String(name || ''))?.[1] || '').toLowerCase();
+const docLimits      = () => ({ max_mb: 25, max_copies: 99, ...(docInfo?.limits || {}) });
+const docActiveJobs  = () => (docInfo?.jobs || []).filter(j => DOC_ACTIVE.includes(j.status));
+const docPrinterName = () => document.getElementById('docPrinterSel').value || docPrinters?.default || '';
+const docPrinterCaps = name => (docPrinters?.printers || []).find(p => p.name === name) || { color: false, duplex: false };
 
 function fmtBytes(n) {
   return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -4526,6 +4598,26 @@ function docFileError(file) {
   return '';
 }
 
+// The same rules as the server's parse_pages, so a typo is caught before anything is sent
+function docPagesError(text) {
+  const t = String(text || '').replace(/\s+/g, '').replace(/[–—]/g, '-');
+  if (!t || t.toLowerCase() === 'all') return '';
+  for (const part of t.split(',').filter(Boolean)) {
+    const m = /^(\d{1,5})(?:-(\d{0,5}))?$/.exec(part);
+    if (!m) return `Pages: '${part}' isn't a page or a range. Use e.g. 1-3, 5 or 4- (4 to the end).`;
+    const first = +m[1];
+    const last  = m[2] === undefined ? first : (m[2] === '' ? Infinity : +m[2]);
+    if (first < 1 || last < first) return `Pages: '${part}' runs backwards or starts at 0.`;
+  }
+  return '';
+}
+
+function docLinkError(url) {
+  if (!url) return 'Paste the link to the file.';
+  if (!/^https?:\/\/[^\s/?#]+\.[^\s]/i.test(url)) return 'Paste a link that starts with https:// (or http://).';
+  return '';
+}
+
 function onDocFileChange() {
   const file = document.getElementById('docFile').files?.[0];
   const err  = docFileError(file);
@@ -4536,21 +4628,44 @@ function onDocFileChange() {
   document.getElementById('docDropText').innerHTML = file
     ? `${escHtml(file.name)}<small>${fmtBytes(file.size)} · tap to change</small>`
     : 'Tap to choose a file<small>or drop it here</small>';
-  document.getElementById('docFileError').textContent = err;
+  if (docSource === 'file') document.getElementById('docFileError').textContent = err;
+  updateDocPrintBtn();
+}
+
+function setDocSource(src) {
+  docSource = src;
+  [['file', 'docSrcFile'], ['link', 'docSrcLink']].forEach(([s, id]) => {
+    const b = document.getElementById(id);
+    b.classList.toggle('active', s === src);
+    b.setAttribute('aria-pressed', String(s === src));
+  });
+  document.getElementById('docFileWrap').hidden = src !== 'file';
+  document.getElementById('docLinkWrap').hidden = src !== 'link';
+  document.getElementById('docFileError').textContent =
+    src === 'file' ? docFileError(document.getElementById('docFile').files?.[0]) : '';
+  if (src === 'link') document.getElementById('docLink').focus();
   updateDocPrintBtn();
 }
 
 function updateDocPrintBtn() {
   const btn = document.getElementById('docPrintBtn');
   if (!btn || btn.querySelector('.spinner')) return;
-  const file = document.getElementById('docFile').files?.[0];
-  btn.disabled = !file || !!docFileError(file) || !navigator.onLine;
+  const file  = document.getElementById('docFile').files?.[0];
+  const ready = docSource === 'link' ? !!document.getElementById('docLink').value.trim()
+                                     : !!file && !docFileError(file);
+  btn.disabled = !ready || !navigator.onLine;
 }
 
+// Clears what to print and its options; the printer stays as picked
 function resetDoc() {
   document.getElementById('docFile').value = '';
+  document.getElementById('docLink').value = '';
+  ['docCopies', 'docPages'].forEach(id => document.getElementById(id).classList.remove('error'));
   document.getElementById('docCopies').value = '1';
-  document.getElementById('docCopies').classList.remove('error');
+  document.getElementById('docPages').value = '';
+  document.getElementById('docDuplex').value = 'off';
+  document.getElementById('docOrientation').value = 'auto';
+  document.getElementById('docColor').value = 'color';
   onDocFileChange();
 }
 
@@ -4561,13 +4676,57 @@ function resetDoc() {
   ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, () => drop.classList.remove('drag')));
 })();
 
+// ── Printer picker ──
+// The Docs tab starts on the default printer (Settings → Document Printer)
+// and stays on one picked by hand for the session, like the label type.
+async function loadDocPrinters() {
+  try {
+    const res = await apiFetch(`${API}/docs/printers`);
+    if (!res || !res.ok) return;
+    docPrinters = await res.json();
+  } catch { return; }
+  renderDocPrinterPicker();
+  setDocPrinterChoice(savedSettings?.doc_printer || '');
+}
+
+function renderDocPrinterPicker() {
+  const sel  = document.getElementById('docPrinterSel');
+  const list = docPrinters?.printers || [];
+  if (!list.length) {
+    sel.innerHTML = '<option value="">No printers found on the shop computer</option>';
+  } else {
+    sel.innerHTML = list.map(p => `<option value="${escHtml(p.name)}">${escHtml(p.name)}`
+      + `${p.name === docPrinters.default ? ' (default)' : ''}</option>`).join('');
+    sel.value = list.some(p => p.name === docPrinterPick) ? docPrinterPick : (docPrinters.default || list[0].name);
+  }
+  updateDocOptions();
+}
+
+function onDocPrinterChange() {
+  docPrinterPick = document.getElementById('docPrinterSel').value;
+  updateDocOptions();
+  renderDocPrinter(null);
+  document.getElementById('docPrinterMsg').textContent = 'Checking...';
+  document.getElementById('docPrinterTips').hidden = true;
+  pollDocs();
+}
+
+// Two-sided and colour are offered only on a printer that can do them
+function updateDocOptions() {
+  const caps = docPrinterCaps(docPrinterName());
+  document.getElementById('docDuplexWrap').hidden = !caps.duplex;
+  if (!caps.duplex) document.getElementById('docDuplex').value = 'off';
+  document.getElementById('docColorWrap').hidden = !caps.color;
+}
+
 async function pollDocs() {
   const seq = ++docPollSeq;
   clearTimeout(docPollTimer);
   docPollTimer = null;
+  const printer = docPrinterName();
   let data;
   try {
-    const res = await apiFetch(`${API}/docs`);
+    const res = await apiFetch(`${API}/docs${printer ? '?printer=' + encodeURIComponent(printer) : ''}`);
     if (!res) return;
     if (!res.ok) throw new Error();
     data = await res.json();
@@ -4619,8 +4778,6 @@ function renderDocPrinter(p) {
   const dot = document.getElementById('docDot');
   if (!p) { dot.className = 'status-dot'; return; }
   dot.className = 'status-dot ' + (p.state === 'ready' ? 'online' : p.state === 'asleep' ? 'sleep' : 'offline');
-  document.getElementById('docPrinterName').textContent =
-    p.name ? p.name + (p.auto ? ' (picked automatically)' : '') : 'No office printer';
   let text = p.message || '';
   if (p.state === 'asleep' && p.since) text += ` Since ${p.since}.`;
   else if (p.reachable && p.checked_at) text += ` Checked ${p.checked_at}.`;
@@ -4630,19 +4787,33 @@ function renderDocPrinter(p) {
   tips.hidden = !(p.tips || []).length;
 }
 
+// The options a job was sent with, where they are not the usual ones
+function docOptionsText(j) {
+  const bits = [];
+  if (j.page_range) bits.push(`pages ${j.page_range}${j.total_pages ? ` of ${j.total_pages}` : ''}`);
+  if (j.duplex === 'long') bits.push('two-sided');
+  if (j.duplex === 'short') bits.push('two-sided, short edge');
+  if (j.color === 'gray' && docPrinterCaps(j.printer).color) bits.push('black & white');
+  if (j.orientation && j.orientation !== 'auto') bits.push(j.orientation);
+  if (j.link_host) bits.push(`from ${j.link_host}`);
+  bits.push(`on ${j.printer}`);
+  return bits.join(' · ');
+}
+
 function docRowHtml(j) {
   const [icon, words] = DOC_STATUS[j.status] || ['•', j.status];
   const live   = DOC_ACTIVE.includes(j.status);
   const amount = j.pages ? `${j.pages} page${j.pages !== 1 ? 's' : ''} × ${j.copies}`
                          : `${j.copies} cop${j.copies !== 1 ? 'ies' : 'y'}`;
   const when   = j.finished_at ? `${words} ${j.finished_at}` : `sent ${j.created_at}`;
-  const cls    = j.status === 'converting' ? 'printing' : j.status;
+  const cls    = j.status === 'converting' || j.status === 'downloading' ? 'printing' : j.status;
   return `
     <div class="queue-item ${escHtml(cls)}">
       <div class="queue-status">${icon}</div>
       <div class="queue-info">
         <div class="queue-product" style="overflow-wrap:anywhere;">${escHtml(j.name)}</div>
         <div class="queue-detail">${escHtml(amount)} · ${escHtml(when)} · ${escHtml(j.username)}</div>
+        <div class="queue-detail doc-opts">${escHtml(docOptionsText(j))}</div>
         ${j.status === 'failed' ? `<div class="queue-error">${escHtml(j.error || 'Printing failed')}</div>`
           : live ? `<div class="queue-detail">${escHtml(j.detail || words)}</div>` : ''}
       </div>
@@ -4667,39 +4838,60 @@ function renderDocs() {
 }
 
 async function submitDocPrint() {
-  const fileEl   = document.getElementById('docFile');
-  const copiesEl = document.getElementById('docCopies');
-  const btn      = document.getElementById('docPrintBtn');
-  const content  = document.getElementById('docPrintBtnContent');
-  const file     = fileEl.files?.[0];
+  const btn       = document.getElementById('docPrintBtn');
+  const content   = document.getElementById('docPrintBtnContent');
+  const copiesEl  = document.getElementById('docCopies');
+  const pagesEl   = document.getElementById('docPages');
   const { max_copies } = docLimits();
   copiesEl.classList.remove('error');
+  pagesEl.classList.remove('error');
 
-  if (!file) { showToast('Choose a file to print'); return; }
-  const err = docFileError(file);
-  if (err) { showToast(err); return; }
+  const fd = new FormData();
+  let what;
+  if (docSource === 'link') {
+    const url = document.getElementById('docLink').value.trim();
+    const err = docLinkError(url);
+    if (err) { showToast(err); return; }
+    fd.append('url', url);
+    what = 'the file from that link';
+  } else {
+    const file = document.getElementById('docFile').files?.[0];
+    if (!file) { showToast('Choose a file to print'); return; }
+    const err = docFileError(file);
+    if (err) { showToast(err); return; }
+    fd.append('file', file, file.name);
+    what = file.name;
+  }
   const copies = Number(copiesEl.value);
   if (!Number.isInteger(copies) || copies < 1 || copies > max_copies) {
     copiesEl.classList.add('error');
     showToast(`Copies must be 1–${max_copies}`);
     return;
   }
-  if (copies > 10 && !confirm(`⚠️ Print ${copies} copies of ${file.name}?`)) return;
+  const pagesErr = docPagesError(pagesEl.value);
+  if (pagesErr) { pagesEl.classList.add('error'); showToast(pagesErr); return; }
+  if (copies > 10 && !confirm(`⚠️ Print ${copies} copies of ${what}?`)) return;
   // A sleeping printer is normal and handled on the shop computer; a fault is worth a question
   const p = docInfo?.printer;
   if (p?.state === 'error' && !confirm(`⚠️ ${p.message}\n\nSend it anyway? It waits until that is sorted out.`)) return;
 
+  const printer = docPrinterName();
+  const caps    = docPrinterCaps(printer);
+  fd.append('printer', printer);
+  fd.append('copies', String(copies));
+  fd.append('pages', pagesEl.value.trim());
+  fd.append('duplex', caps.duplex ? document.getElementById('docDuplex').value : 'off');
+  fd.append('color', caps.color ? document.getElementById('docColor').value : 'gray');
+  fd.append('orientation', document.getElementById('docOrientation').value);
+
   btn.disabled = true;
   content.innerHTML = '<div class="spinner"></div>';
   try {
-    const fd = new FormData();
-    fd.append('file', file, file.name);
-    fd.append('copies', String(copies));
     const res = await apiFetch(`${API}/docs/print`, { method: 'POST', body: fd });
     if (!res) return;
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { showToast(data.error || (res.status === 413 ? 'That file is too large' : 'Could not send the file')); return; }
-    showToast(`📄 ${file.name} is on its way to the printer`);
+    showToast(docSource === 'link' ? '🔗 The shop computer is downloading it to print' : `📄 ${what} is on its way to the printer`);
     resetDoc();
     pollDocs();
   } catch { showToast('❌ Cannot reach server'); }
@@ -4711,19 +4903,19 @@ async function cancelDocJob(id) {
     const r = await postJson('/docs/cancel', { job_id: id });
     if (!r) return;
     showToast(!r.ok ? (r.data.error || 'Could not cancel')
-      : r.data.message === 'Stopping' ? 'Stopping after the page being sent' : '✅ Cancelled');
+      : r.data.message === 'Stopping' ? 'Stopping it now' : '✅ Cancelled');
   } catch { showToast('Could not cancel'); }
   pollDocs();
 }
 
-// Knocks on the printer for up to 15 seconds on the shop computer, which wakes it if anything can
+// Knocks on the picked printer for up to 15 seconds on the shop computer, which wakes it if anything can
 async function wakeDocPrinter() {
   const btn = document.getElementById('docWakeBtn');
   btn.disabled = true;
   document.getElementById('docDot').className = 'status-dot';
   document.getElementById('docPrinterMsg').textContent = 'Knocking on the printer…';
   try {
-    const r = await postJson('/docs/wake', {});
+    const r = await postJson('/docs/wake', { printer: docPrinterName() });
     if (!r) return;
     if (!r.ok) throw new Error(r.data.error);
     const p = r.data.printer;
@@ -4737,24 +4929,15 @@ async function wakeDocPrinter() {
 }
 
 // ── Settings: document printer ─────────────────
-async function loadDocPrinters() {
-  try {
-    const res = await apiFetch(`${API}/docs/printers`);
-    if (!res || !res.ok) return;
-    docPrinterList = await res.json();
-    setDocPrinterChoice(savedSettings?.doc_printer || '');
-  } catch {}
-}
-
 function setDocPrinterChoice(current) {
   const sel = document.getElementById('setDocPrinter');
   if (!sel) return;
-  const list  = docPrinterList?.printers || [];
+  const list  = (docPrinters?.printers || []).map(p => p.name);
   const names = current && !list.includes(current) ? [...list, current] : list;
-  const auto  = !docPrinterList ? 'Automatic: the HP printer'
-              : docPrinterList.auto ? `Automatic: ${docPrinterList.auto}` : 'Automatic: no HP printer found';
+  const auto  = !docPrinters ? 'Automatic: the HP printer'
+              : docPrinters.auto ? `Automatic: ${docPrinters.auto}` : 'Automatic: no HP printer found';
   sel.innerHTML = `<option value="">${escHtml(auto)}</option>` + names.map(n =>
-    `<option value="${escHtml(n)}">${escHtml(n)}${docPrinterList && !list.includes(n) ? ' (not installed)' : ''}</option>`).join('');
+    `<option value="${escHtml(n)}">${escHtml(n)}${docPrinters && !list.includes(n) ? ' (not installed)' : ''}</option>`).join('');
   sel.value = current;
 }
 
@@ -4777,8 +4960,10 @@ async function saveDocSetting(key) {
     if (!r.ok) throw new Error(r.data.error);
     savedSettings = { ...savedSettings, [key]: r.data[key] };
     if (key === 'doc_printer') {
-      docInfo = null;   // its state was the old printer's
-      showToast(`✅ Documents print on ${value || docPrinterList?.auto || 'the HP printer'}`);
+      // The Docs tab starts on the new default, unless a printer was picked there by hand
+      if (docPrinters) { docPrinters.default = value || docPrinters.auto; renderDocPrinterPicker(); }
+      docInfo = null;
+      showToast(`✅ Documents print on ${value || docPrinters?.auto || 'the HP printer'} unless another is picked`);
     } else {
       showToast(value ? `✅ The printer is checked every ${value} min` : '✅ Keep-awake check is off');
     }

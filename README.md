@@ -52,16 +52,28 @@ python bot.py
 
 ## Document printing (Docs tab)
 
-The **Docs** tab in the web UI prints a PDF, a photo, or a Word / Excel / PowerPoint file on the
-shop's office printer (the HP), from anywhere the web UI opens. Files print one at a time,
-separately from labels, and never on the label printer.
+The **Docs** tab in the web UI prints a PDF, a photo, or a Word / Excel / PowerPoint file on one
+of the shop computer's printers (normally the HP), from anywhere the web UI opens. Files print
+one at a time, separately from labels, and never on the label printer.
+
+- **Printer:** picked from the printers installed on the shop computer. The tab starts on the
+  default one (**Settings → Document Printer**; automatic picks the first printer with "HP" in
+  its name).
+- **Options:** copies (1 to 99), pages (e.g. `1-3, 5`, or `4-` for 4 to the end), two-sided
+  (only on a printer that can), colour or black & white (only on a colour printer), and
+  orientation (Auto follows the first page).
+- **File or link:** upload a file, or paste a public link to one. The shop computer downloads
+  it. Google Drive, Google Docs / Sheets / Slides and Dropbox share links work when they are
+  shared with anyone who has the link. Links into the shop's own network (the router, the
+  printers, this computer) are refused, including through a redirect.
 
 ### Setup on the shop computer
-1. `pip install -r requirements.txt` (adds `pypdfium2`, which draws the PDF pages).
+1. `pip install -r requirements.txt` (adds `pypdfium2`, which draws the PDF pages, and
+   `certifi`, the certificate list used when downloading from a link).
 2. For Word, Excel and PowerPoint files, install **LibreOffice** (free, from libreoffice.org).
    Without it, PDFs and photos still print, and the Docs tab says the other files need it.
-3. Install the HP printer in Windows. The Docs tab uses the first printer with "HP" in its name;
-   pick another one under **Settings → Document Printer** if that is wrong.
+3. Install the HP printer in Windows. If the automatic default is wrong, pick the right one
+   under **Settings → Document Printer**.
 
 ### Keeping the printer reachable while it sleeps
 An HP printer on Wi-Fi goes to sleep after a few minutes without work. Sleep itself is fine.
@@ -97,8 +109,9 @@ What the server does about sleep:
 - It follows each file in the Windows print queue until the printer has taken it, and the Docs
   tab says why a file is waiting (printer asleep, out of paper, paused).
 
-Limits: 25 MB per file, 1 to 99 copies, 300 pages per file. Landscape pages are turned to fit
-the paper, pages bigger than the paper are shrunk to fit it, and photos fill the page.
+Limits: 25 MB per file (uploaded or downloaded), 1 to 99 copies, 300 pages per copy. With Auto
+orientation, a page the other way round from the first one is turned to fill the paper. Pages
+bigger than the paper are shrunk to fit it, and photos fill the page.
 
 ---
 
