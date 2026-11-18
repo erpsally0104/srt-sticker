@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
 
@@ -408,6 +409,14 @@ def set_label_text_settings(updates: dict):
             # Every one of these is a mandatory declaration — blanking any
             # of them would print a non-compliant label.
             return None, f"{key.replace('_', ' ').title()} cannot be empty"
+        if key == "fssai_number":
+            # Always 14 digits, as the logo sticker checks. A number saved a
+            # digit or two short prints in full and passes for right, so it
+            # went out on every label. Spaces are dropped; [0-9], not \d,
+            # which passes digits the label font cannot draw.
+            val = "".join(val.split())
+            if not re.fullmatch(r"[0-9]{14}", val):
+                return None, "FSSAI number must be exactly 14 digits"
         data[key] = val
         applied[key] = val
     _save(data)

@@ -2126,7 +2126,10 @@ async function saveGeometry() {
   if (getIsAdmin()) {
     Object.entries({ ...LABEL_TEXT_FIELDS, ...BRAND_FIELDS }).forEach(([id, key]) => { payload[key] = document.getElementById(id).value.trim(); });
     payload.brand_name = payload.brand_name.toUpperCase();
+    payload.fssai_number = payload.fssai_number.replace(/\s+/g, '');   // "1362 0011 0005 63" still reads
     if (!payload.fssai_number)    { showToast('FSSAI number cannot be empty'); return false; }
+    // A number short a digit prints in full and passes for right, so it is refused
+    if (!/^[0-9]{14}$/.test(payload.fssai_number)) { showToast('FSSAI number must be 14 digits'); return false; }
     if (!payload.company_prefix)  { showToast('Qualifying phrase cannot be empty'); return false; }
     if (!payload.company_name)    { showToast('Company name cannot be empty'); return false; }
     if (!payload.company_address) { showToast('Company address cannot be empty'); return false; }
