@@ -16,5 +16,15 @@
   "large_vgap_mm": 2,
   "brand_name": "CRYSTAL CLEAR",
   "brand_mark": "\u00ae",
-  "customer_care": "radhetraders.dk@gmail.com"
+  "customer_care": "radhetraders.dk@gmail.com",
+  "single_offset_x_mm": 0,
+  "single_offset_y_mm": 0,
+  "double_offset_x_mm": 0,
+  "double_offset_y_mm": 0,
+  "large_offset_x_mm": 0,
+  "large_offset_y_mm": 0,
+  "print_density": 8,
+  "print_speed": 3,
+  "doc_printer": "",
+  "doc_keepalive_minutes": 2
 }
