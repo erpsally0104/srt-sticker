@@ -21,8 +21,9 @@ exit /b %errorlevel%
 $ErrorActionPreference = 'Stop'
 try { $Host.UI.RawUI.WindowTitle = 'SRT - Document printer setup' } catch {}
 
-# IP discovered during setup; used only as the fallback default.
-$defaultIp = '192.168.0.9'
+# Fallback default only. The script detects the real IP below; this is used
+# just to pre-fill the prompt if detection finds nothing.
+$defaultIp = '192.168.0.3'
 
 $rxUrl = [regex]'https?://((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})'
 $rxIp  = [regex]'^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$'
@@ -60,9 +61,20 @@ try {
   $origPort = $printer.PortName
 
   # 2) Work out the printer's IP address ----------------------------
+  # Prefer the live network name (a WSD "Location" can be stale), then the
+  # current port, then the device's recorded address, then the default.
   $ip = $null
-  $cp = Get-PrinterPort -Name $origPort -ErrorAction SilentlyContinue
-  if ($cp -and $cp.PrinterHostAddress) { $ip = $cp.PrinterHostAddress }
+  $hostName = (($printer.Name -split '[\(]')[0]).Trim()
+  if ($hostName) {
+    try {
+      $live = [System.Net.Dns]::GetHostAddresses($hostName) | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
+      if ($live) { $ip = $live.IPAddressToString }
+    } catch {}
+  }
+  if (-not $ip) {
+    $cp = Get-PrinterPort -Name $origPort -ErrorAction SilentlyContinue
+    if ($cp -and $cp.PrinterHostAddress) { $ip = $cp.PrinterHostAddress }
+  }
   if (-not $ip) {
     foreach ($d in (Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'HP|Laser|Hewlett' })) {
       foreach ($pr in (Get-PnpDeviceProperty -InstanceId $d.InstanceId -ErrorAction SilentlyContinue)) {
@@ -98,10 +110,13 @@ try {
   Say ("Checking {0} on port 9100..." -f $ip)
   $ok = $false
   try { $c = New-Object System.Net.Sockets.TcpClient; $ok = $c.ConnectAsync($ip, 9100).Wait(3000); $c.Close() } catch { $ok = $false }
-  if ($ok) { Say '  reachable.' Green }
+  if ($ok) { Say '  reachable - looks like the printer.' Green }
   else {
-    Say '  not answering right now (it may be asleep or on a different IP).' Yellow
-    if ((Read-Host '  Continue anyway? (y/N)') -notmatch '^[Yy]') { Done 1 }
+    Say ("  nothing answered at {0}:9100." -f $ip) Yellow
+    Say '  It may be asleep, or this IP is stale (a WSD Location can be).' Yellow
+    Say '  Get the current IP from the printer (Menu > Network, or print a' Yellow
+    Say '  network/config page) or your router, then re-run and enter it.' Yellow
+    if ((Read-Host '  Continue with this IP anyway? (y/N)') -notmatch '^[Yy]') { Done 1 }
   }
 
   # 5) Create the Standard TCP/IP port if needed --------------------
