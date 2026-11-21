@@ -824,16 +824,42 @@ def _header_name(headers) -> str:
         return ""
 
 
-def download(url: str, base: str, cancelled=None, progress=None):
+def _is_html(ctype: str, head: bytes) -> bool:
+    """Does the response look like a web page rather than a file?"""
+    return (ctype in ("text/html", "application/xhtml+xml") or
+            head.lstrip(b"\xef\xbb\xbf \t\r\n").lower().startswith((b"<!doctype html", b"<html")))
+
+
+def _is_google_dl(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return host.endswith("google.com") and ("drive" in host or "docs" in host)
+
+
+def _drive_confirm_url(html: str, base_url: str) -> Optional[str]:
     """
-    Fetch the file behind `url` to `base` + its extension.
-    Returns (path, display name, kind). Raises DocError for anything the user should hear about.
+    Google Drive serves a "can't scan this file for viruses" page instead of a
+    larger file. Pull the real download URL out of it so the file still prints.
+    Handles the current download-form page and the older confirm-token link.
     """
-    fetch = direct_link(url)
+    m = re.search(r'id="download-form"[^>]*action="([^"]+)"', html)
+    if m:
+        action = m.group(1).replace("&amp;", "&")
+        params = dict(re.findall(r'name="([^"]+)"\s+value="([^"]*)"', html))
+        return action + ((("&" if "?" in action else "?") + urlencode(params)) if params else "")
+    m = re.search(r'href="(/uc\?export=download[^"]*confirm=[^"]+)"', html)
+    if m:
+        return "https://drive.google.com" + m.group(1).replace("&amp;", "&")
+    m = re.search(r'[?&]confirm=([0-9A-Za-z_-]+)', html)
+    if m and "id=" in base_url:
+        return base_url + ("&" if "?" in base_url else "?") + "confirm=" + m.group(1)
+    return None
+
+
+def _fetch_once(fetch: str, part: str, cancelled, progress):
+    """Download one URL to `part`. Returns (content type, filename, bytes). Raises DocError."""
     host = (urlparse(fetch).hostname or "").lower()
     shared = any(s in host for s in ("google", "dropbox"))
     limit = MAX_UPLOAD_MB * 1024 * 1024
-    part = base + ".part"
     req = urllib.request.Request(fetch, headers={
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SRT-Labels-Docs/1.0",
         "Accept": "application/pdf,image/*,application/octet-stream;q=0.9,*/*;q=0.5",
@@ -861,6 +887,7 @@ def download(url: str, base: str, cancelled=None, progress=None):
                     out.write(chunk)
                     if progress:
                         progress(got)
+            return ctype, name, got
     except urllib.error.HTTPError as e:
         _remove(part)
         hint = " Check it is shared with anyone who has the link." if shared else ""
@@ -888,6 +915,31 @@ def download(url: str, base: str, cancelled=None, progress=None):
         _remove(part)
         raise
 
+
+def download(url: str, base: str, cancelled=None, progress=None):
+    """
+    Fetch the file behind `url` to `base` + its extension.
+    Returns (path, display name, kind). Raises DocError for anything the user should hear about.
+    """
+    fetch = direct_link(url)
+    part = base + ".part"
+    ctype, name, got = _fetch_once(fetch, part, cancelled, progress)
+
+    # Google Drive hands back a "can't scan for viruses" web page for larger
+    # files; follow it once to the real download so the PDF still prints.
+    if got and _is_google_dl(fetch):
+        with open(part, "rb") as f:
+            head = f.read(512)
+        if _is_html(ctype, head):
+            with open(part, "rb") as f:
+                page = f.read(65536).decode("utf-8", "replace")
+            confirm = _drive_confirm_url(page, fetch)
+            if confirm:
+                ctype, name, got = _fetch_once(confirm, part, cancelled, progress)
+                fetch = confirm
+
+    host = (urlparse(fetch).hostname or "").lower()
+    shared = any(s in host for s in ("google", "dropbox"))
     if got == 0:
         _remove(part)
         raise DocError("That link gave an empty file.")
@@ -897,13 +949,11 @@ def download(url: str, base: str, cancelled=None, progress=None):
     if not ext:
         named = os.path.splitext(name)[1].lower()
         guessed = mimetypes.guess_extension(ctype) or ""
-        html = ctype in ("text/html", "application/xhtml+xml") or \
-            head.lstrip(b"\xef\xbb\xbf \t\r\n").lower().startswith((b"<!doctype html", b"<html"))
-        if html:
+        if _is_html(ctype, head):
             _remove(part)
-            hint = (" Check it is shared with anyone who has the link." if shared
-                    else " Use the link that downloads the file itself.")
-            raise DocError("That link opens a web page, not a file." + hint)
+            hint = (" Make sure it is shared with 'Anyone with the link', then paste that share link."
+                    if shared else " Paste a link that opens the file itself (the one that downloads it).")
+            raise DocError("That link opens a web page, not the file." + hint)
         ext = named if named in OFFICE_TYPES else guessed if guessed in OFFICE_TYPES else ""
         if not ext:
             _remove(part)
