@@ -81,7 +81,7 @@ PRINT_NAMES = {"print_density": "Darkness", "print_speed": "Print speed"}
 
 # ── Label text defaults ────────────────────────
 # These are all mandatory declarations under FSSAI Reg 5(6)(a), 5(7) and
-# Reg 10(1), so they are content settings only — there is deliberately no
+# Reg 10, so they are content settings only — there is deliberately no
 # switch to hide any of them.
 LABEL_TEXT_DEFAULTS = {
     "fssai_number":    "13620011000563",
@@ -90,7 +90,15 @@ LABEL_TEXT_DEFAULTS = {
     "company_name":    "SRI RADHE TRADERS",
     # Reg 5(6)(a) requires the COMPLETE address, door number included.
     "company_address": "15-7-173/A, BEGUM BAZAR, HYDERABAD, TELANGANA - 500012",
+    # Reg 10(4): a non-retail pack must say it is not for sale to consumers.
+    # Printed in capitals at the foot of every product label.
+    "non_retail_text": "NOT FOR DIRECT SALE TO CONSUMER",
 }
+
+# The longest non-retail statement. Ordinary wording this long still sets
+# at 14 px or more on both label sizes. The printer never goes below 12 px
+# (capitals 1.1 mm tall) and squeezes the line sideways instead.
+NON_RETAIL_TEXT_MAX = 60
 
 # ── Brand (large label only) ───────────────────
 # The registered trade mark printed across the top of the 75 x 50 label.
@@ -417,6 +425,10 @@ def set_label_text_settings(updates: dict):
             val = "".join(val.split())
             if not re.fullmatch(r"[0-9]{14}", val):
                 return None, "FSSAI number must be exactly 14 digits"
+        if key == "non_retail_text":
+            val = " ".join(val.split()).upper()
+            if len(val) > NON_RETAIL_TEXT_MAX:
+                return None, f"Non-retail statement must be {NON_RETAIL_TEXT_MAX} characters or fewer"
         data[key] = val
         applied[key] = val
     _save(data)

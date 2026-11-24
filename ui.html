@@ -1404,7 +1404,7 @@ kbd {
         <div style="font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Label Content</div>
 
         <div style="font-size:0.8rem; color:#777; line-height:1.45; margin-bottom:14px;">
-          All four are mandatory FSSAI declarations and always print. There is no
+          All five are mandatory FSSAI declarations and always print. There is no
           switch to hide them.
         </div>
         <div id="labelContentLock" class="roll-hint" style="margin:0 0 14px;" hidden>
@@ -1423,9 +1423,15 @@ kbd {
           <label class="form-label" for="setCompanyName">Company Name</label>
           <input type="text" id="setCompanyName" placeholder="e.g. SRI RADHE TRADERS"/>
         </div>
-        <div class="form-group" style="margin-bottom:0;">
+        <div class="form-group">
           <label class="form-label" for="setCompanyAddress">Complete Address &mdash; incl. shop no. &amp; PIN</label>
           <input type="text" id="setCompanyAddress" placeholder="e.g. Shop 12, Begum Bazar, Hyderabad, Telangana - 500012"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" for="setNonRetailText">Non-Retail Statement</label>
+          <input type="text" id="setNonRetailText" placeholder="e.g. NOT FOR DIRECT SALE TO CONSUMER" maxlength="60"
+            style="text-transform:uppercase;" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off"/>
+          <div class="field-note">Printed in capitals at the foot of every product label, to mark the pack as not for sale to consumers. Up to 60 characters.</div>
         </div>
       </div>
 
@@ -2011,6 +2017,7 @@ const PRINT_LIMITS = { print_density: ['Darkness', 0, 15], print_speed: ['Speed'
 const LABEL_TEXT_FIELDS = {
   setFssaiNumber: 'fssai_number', setCompanyPrefix: 'company_prefix',
   setCompanyName: 'company_name', setCompanyAddress: 'company_address',
+  setNonRetailText: 'non_retail_text',
 };
 const BRAND_FIELDS = {
   setBrandName: 'brand_name', setBrandMark: 'brand_mark', setCustomerCare: 'customer_care',
@@ -2133,6 +2140,8 @@ async function saveGeometry() {
     if (!payload.company_prefix)  { showToast('Qualifying phrase cannot be empty'); return false; }
     if (!payload.company_name)    { showToast('Company name cannot be empty'); return false; }
     if (!payload.company_address) { showToast('Company address cannot be empty'); return false; }
+    payload.non_retail_text = payload.non_retail_text.replace(/\s+/g, ' ').toUpperCase();
+    if (!payload.non_retail_text) { showToast('Non-retail statement cannot be empty'); return false; }
     if (!payload.brand_name)      { showToast('Brand name cannot be empty'); return false; }
   }
 

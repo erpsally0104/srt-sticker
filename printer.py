@@ -8,7 +8,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageFilter
 import qrcode
 import textwrap
 from parser import PrintRequest
-from settings_manager import get_settings, normalize_roll_type, get_print_settings, get_print_offset
+from settings_manager import (get_settings, normalize_roll_type, get_print_settings, get_print_offset,
+                              LABEL_TEXT_DEFAULTS)
 
 PRINTER_NAME = "TSC TE244"
 
@@ -97,7 +98,7 @@ def _apply_geometry(roll=None) -> str:
 # height. Its strokes are even, with no hairlines for the head to
 # under-burn. Arial stands in should the font ever be missing.
 FONT_TEXT     = r"C:\Windows\Fonts\bahnschrift.ttf"
-TEXT_BOLD     = (FONT_TEXT, "Bold")                 # values, licence, NOT FOR RETAIL SALE
+TEXT_BOLD     = (FONT_TEXT, "Bold")                 # values, licence, non-retail statement
 TEXT_BOLD_SC  = (FONT_TEXT, "Bold SemiCondensed")   # keys, small lines, allergens, address
 TEXT_REGULAR  = (FONT_TEXT, "Regular")              # ingredients text
 FONT_ARIAL_NB = r"C:\Windows\Fonts\ARIALNB.TTF"
@@ -355,6 +356,14 @@ def load_fssai_logo(height=None, max_width=None):
     return logo
 
 
+def _non_retail_text(settings):
+    """
+    Reg 10(4): the statement that marks the pack as not for sale to
+    consumers, worded as set in Settings. Never blank: it is mandatory.
+    """
+    return settings.get("non_retail_text") or LABEL_TEXT_DEFAULTS["non_retail_text"]
+
+
 def _qr_data(req, batch_no, company_name, fssai_number):
     parts = [
         f"{req.product} {req.weight}",
@@ -381,10 +390,11 @@ def _fit_tracked(text, path, fallback, size, min_size, max_w, tracking=1):
     return None
 
 
-def _draw_allergen_pill(draw, x, cy, allergens, max_w, size, height, min_size=10):
+def _draw_allergen_pill(draw, x, cy, allergens, max_w, size, height, min_size=10, filled=True):
     """
-    "CONTAINS: ..." white on a black pill, its left edge at x and centred on
-    cy, the text at most `size` px and shrunk until the pill fits max_w.
+    "CONTAINS: ..." white on a black pill, or with filled=False black inside
+    a pill outline, its left edge at x and centred on cy, the text at most
+    `size` px and shrunk until the pill fits max_w.
     Semi-condensed: at a given width it can be set a size or two larger
     than the full width, which is what keeps a long allergen line legible.
 
@@ -402,9 +412,14 @@ def _draw_allergen_pill(draw, x, cy, allergens, max_w, size, height, min_size=10
     if font is None:
         text, font = full, _fit_tracked(full, TEXT_BOLD_SC, FONT_ARIAL_NB, min_size + 1, min_size, max_w - height)
     font = font or get_font(TEXT_BOLD_SC, min_size, FONT_ARIAL_NB)
-    w = _tracked_width(text, font, 1) + height
-    draw.rounded_rectangle((x, cy - height / 2, x + w, cy + height / 2), radius=height // 2, fill="black")
-    _draw_tracked(draw, x + height / 2, cy - _cap_top(draw, font) / 2, text, font, 1, "white")
+    w   = _tracked_width(text, font, 1) + height
+    box = (x, cy - height / 2, x + w, cy + height / 2)
+    if filled:
+        draw.rounded_rectangle(box, radius=height // 2, fill="black")
+    else:
+        draw.rounded_rectangle(box, radius=height // 2, outline="black", width=2)
+    _draw_tracked(draw, x + height / 2, cy - _cap_top(draw, font) / 2, text, font, 1,
+                  "white" if filled else "black")
     return x + w
 
 
@@ -580,7 +595,6 @@ def build_label_image(req, batch_no):
     name_max_w    = 2 * veg_mark_left - LABEL_W_PX
     font_dates   = get_font(TEXT_BOLD_SC, 26 if has_allergens else 28, FONT_ARIAL_NB)
     font_batch   = get_font(TEXT_BOLD_SC, 22, FONT_ARIAL_NB)  # smaller to save space
-    font_bottom  = get_font(TEXT_BOLD_SC, 16, FONT_ARIAL_NB)
 
     # ── Mandatory declarations ────────────────────
     s = get_settings()
@@ -610,7 +624,7 @@ def build_label_image(req, batch_no):
 
     # Bottom section lines
     LINE_BOTTOM  = 20   # font 16 height approx
-    # FSSAI licence, company name, company address, NOT FOR RETAIL SALE —
+    # FSSAI licence, company name, company address, non-retail statement —
     # all four are mandatory, so the count is fixed.
     n_bottom_lines = 4
 
@@ -716,8 +730,12 @@ def build_label_image(req, batch_no):
                   fit_font(draw, company_address, TEXT_BOLD_SC, 16, TEXT_MAX_W, FONT_ARIAL_NB))
     y += LINE_BOTTOM + 4
 
-    # Reg 10(4) requires this exact wording, in capitals
-    draw_centered(draw, y, "NOT FOR RETAIL SALE", font_bottom)
+    # Reg 10(4): not for sale to consumers, worded as set in Settings.
+    # Shrinks to fit, and is squeezed sideways if it still runs long.
+    notice      = _non_retail_text(s)
+    font_notice = fit_font(draw, notice, TEXT_BOLD_SC, 16, TEXT_MAX_W, FONT_ARIAL_NB, min_size=12)
+    _draw_parts(img, draw, [(notice, font_notice, 0)], PAD, LABEL_W_PX - PAD,
+                _baseline(draw, y, font_notice))
 
     return img
 
@@ -729,15 +747,18 @@ def build_label_image(req, batch_no):
 #   2 x 2 grid  NET WT. | BATCH NO. / PACKED ON | USE BY ......... QR right
 #   storage line between two rules
 #   FSSAI logo + licence | packer name, address, customer care
-#   NOT FOR RETAIL SALE bar
+#   non-retail statement (NOT FOR DIRECT SALE TO CONSUMER) in a framed bar
 # Rows run down from the top and the bar is pinned to the bottom edge, so
 # the footer takes whatever height is left. Sizes are tuned for 75 x 50; a
 # die-cut a few mm either way lays out the same.
+# Everything is black on white, in frames and rules: no cell, bar or pill
+# is filled in, because solid black smears when packed goods are stacked
+# on one another.
 LARGE_EDGE     = 8      # px (1 mm) kept clear on every edge, for die-cut drift
 LARGE_PAD      = 12     # px between the text and the left/right edges
 LARGE_BAND_H   = 52     # brand band
 LARGE_NAME_H   = 52     # product name row
-LARGE_BAR_H    = 30     # NOT FOR RETAIL SALE bar
+LARGE_BAR_H    = 30     # non-retail statement bar
 LARGE_QR_PX    = 129    # QR box: version 6 at 3 dots per module + quiet zone
 LARGE_FOOT_COL = 196    # x of the rule between the FSSAI and packer blocks
 BRAND_TRACKING = 0.07   # brand letter spacing, as a share of the font size
@@ -799,8 +820,7 @@ def _draw_brand_band(draw, box, brand, mark):
     The trade mark in black inside a double frame (rule and keyline), with
     a diamond at each end. Black on white rather than reversed out of a
     solid band: reversed type fills in on a thermal head, the ® worst of
-    all, and the inverted NET WT. cell and NOT FOR RETAIL SALE bar stand
-    out more as the only solid black on the label.
+    all, and solid black smears when packed goods are stacked.
     """
     x0, y0, x1, y1 = box
     cy = (y0 + y1) / 2
@@ -878,28 +898,27 @@ def build_large_label_image(req, batch_no):
     gy0, gy1 = grid_y0, grid_y0 + LARGE_QR_PX - 1
     mx, my   = (gx0 + gx1) // 2, (gy0 + gy1) // 2
     draw.rounded_rectangle((gx0, gy0, gx1, gy1), radius=8, outline="black", width=2)
-    # Net quantity is the cell the receiving kitchen checks, so it is inverted
-    draw.rounded_rectangle((gx0, gy0, mx, my), radius=8, fill="black",
-                           corners=(True, False, False, False))
     draw.line([(mx, gy0), (mx, gy1)], fill="black", width=2)
     draw.line([(gx0, my), (gx1, my)], fill="black", width=2)
 
+    # Net quantity is the cell the receiving kitchen checks, so its value is
+    # set largest. It is not filled in black (see the layout notes above).
     font_key = get_font(TEXT_BOLD_SC, 15, FONT_ARIAL_NB)
     cells = [
-        ((gx0, gy0, mx, my),  "NET WT.",   req.weight,      42, "white"),
-        ((mx, gy0, gx1, my),  "BATCH NO.", batch_no,        29, "black"),
-        ((gx0, my, mx, gy1),  "PACKED ON", req.packed_on,   29, "black"),
-        ((mx, my, gx1, gy1),  "USE BY",    req.best_before, 29, "black"),
+        ((gx0, gy0, mx, my),  "NET WT.",   req.weight,      42),
+        ((mx, gy0, gx1, my),  "BATCH NO.", batch_no,        29),
+        ((gx0, my, mx, gy1),  "PACKED ON", req.packed_on,   29),
+        ((mx, my, gx1, gy1),  "USE BY",    req.best_before, 29),
     ]
-    for (x0, y0, x1, y1), key, value, size, ink in cells:
-        _draw_tracked(draw, x0 + 10, y0 + 18, key, font_key, 1, ink)
+    for (x0, y0, x1, y1), key, value, size in cells:
+        _draw_tracked(draw, x0 + 10, y0 + 18, key, font_key, 1, "black")
         if key == "NET WT.":
             # The number large, its unit a size down
             parts = _fit_weight(draw, value, TEXT_BOLD, size, x1 - x0 - 20, FONT_ARIAL_BD)
-            _draw_parts(img, draw, parts, x0 + 10, x1 - 10, y1 - 9, centre=x0 + 10, fill=ink)
+            _draw_parts(img, draw, parts, x0 + 10, x1 - 10, y1 - 9, centre=x0 + 10)
             continue
         font_value = fit_font(draw, value, TEXT_BOLD, size, x1 - x0 - 20, FONT_ARIAL_BD)
-        draw.text((x0 + 10, y1 - 9), value, font=font_value, fill=ink, anchor="ls")
+        draw.text((x0 + 10, y1 - 9), value, font=font_value, fill="black", anchor="ls")
 
     # ── Allergens + storage line, between rules ───
     rule_y = gy1 + 14
@@ -935,13 +954,14 @@ def build_large_label_image(req, batch_no):
         if layout:
             size, store_text, font_store = layout
             pill_end = _draw_allergen_pill(draw, row_x0, rule_y, req.allergens,
-                                           row_x1 - row_x0, size, PILL_H)
+                                           row_x1 - row_x0, size, PILL_H, filled=False)
             store_x  = row_x1 - _tracked_width(store_text, font_store, 1)
             _draw_tracked(draw, store_x, rule_y - _cap_top(draw, font_store) / 2, store_text,
                           font_store, 1, "black")
             draw.line([(pill_end + 10, rule_y), (store_x - 10, rule_y)], fill="black", width=2)
         else:
-            _draw_allergen_pill(draw, row_x0, rule_y, req.allergens, row_x1 - row_x0, 17, PILL_H)
+            _draw_allergen_pill(draw, row_x0, rule_y, req.allergens, row_x1 - row_x0, 17, PILL_H,
+                                filled=False)
 
     # ── Footer ────────────────────────────────────
     bar     = (LARGE_EDGE, H - LARGE_EDGE - LARGE_BAR_H, W - LARGE_EDGE, H - LARGE_EDGE)
@@ -986,16 +1006,26 @@ def build_large_label_image(req, batch_no):
         draw.text((rx, foot_y0 + line_h * i - 4), line, fill="black", anchor="ls",
                   font=fit_font(draw, line, TEXT_BOLD_SC, 18, r_max, FONT_ARIAL_NB))
 
-    # ── NOT FOR RETAIL SALE ───────────────────────
-    # Reg 10(4) requires this exact wording, in capitals
-    draw.rounded_rectangle(bar, radius=8, fill="black")
-    font_nfrs = get_font(TEXT_BOLD, 19, FONT_ARIAL_BD)
-    nfrs      = "NOT FOR RETAIL SALE"
-    _draw_tracked(draw, (W - _tracked_width(nfrs, font_nfrs, 3)) / 2,
-                  (bar[1] + bar[3]) / 2 - _cap_top(draw, font_nfrs) / 2, nfrs, font_nfrs, 3, "white")
+    # ── Non-retail statement ──────────────────────
+    # Reg 10(4): not for sale to consumers, worded as set in Settings.
+    # Framed rather than reversed out of a black bar (see the layout notes
+    # above). Set as large as the bar allows, spaced out where there is
+    # room, and squeezed sideways if it still runs long.
+    draw.rounded_rectangle(bar, radius=8, outline="black", width=2)
+    notice = _non_retail_text(s)
+    nx0, nx1 = bar[0] + 14, bar[2] - 14     # clear of the frame's rounded ends
+    font_notice, tracking = get_font(TEXT_BOLD, 12, FONT_ARIAL_BD), 1
+    for size in range(19, 11, -1):
+        font = get_font(TEXT_BOLD, size, FONT_ARIAL_BD)
+        fits = [t for t in (3, 2, 1) if _tracked_width(notice, font, t) <= nx1 - nx0]
+        if fits:
+            font_notice, tracking = font, fits[0]
+            break
+    _draw_parts(img, draw, [(ch, font_notice, tracking if i else 0) for i, ch in enumerate(notice)],
+                nx0, nx1, (bar[1] + bar[3]) / 2 - _cap_top(draw, font_notice) / 2)
 
     # Threshold rather than leave it to _pack_mono(): its dithering speckles
-    # the anti-aliased edges of white-on-black type, which this label has a lot of.
+    # the anti-aliased edges of type.
     return img.convert("L").point(lambda p: 0 if p < 128 else 255).convert("RGB")
 
 

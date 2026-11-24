@@ -17,9 +17,9 @@ Both front-ends share the same parsing, printing, batch-numbering, and queue log
 - Batch number (auto-generated)
 - QR code encoding all label details
 - FSSAI license number and company address
-- "Not For Retail Sale | For Institutional Sale Only"
+- The non-retail statement, `NOT FOR DIRECT SALE TO CONSUMER` unless the admin words it otherwise in Settings (`non_retail_text`, printed in capitals, up to 60 characters)
 
-The **large 75 × 50 mm label** adds the registered brand **CRYSTAL CLEAR®** (black on white in a double frame across the top, beside the pre-printed green veg mark), a storage line, and a customer care line. Its brand name, ® / ™ / none, and customer care contact are admin-only settings.
+The **large 75 × 50 mm label** adds the registered brand **CRYSTAL CLEAR®** (black on white in a double frame across the top, beside the pre-printed green veg mark), a storage line, and a customer care line. Nothing on it is filled in solid black (the NET WT. cell, allergen pill and the non-retail statement's bar are outlined), because solid black smears when packs are stacked. Its brand name, ® / ™ / none, and customer care contact are admin-only settings.
 
 The web UI's **Docs** tab prints ordinary files (PDF, photos, Word / Excel / PowerPoint, text), uploaded or fetched from a public link (Google Drive / Docs and Dropbox share links included), on a printer picked from those installed on the shop computer; the default is the shop's office printer, an HP on Wi-Fi. Print options: copies (1–99), pages, two-sided and colour where the printer can, orientation. It is a separate queue from labels and never uses the label printer. Links into the shop's own network are refused. The HP sleeps after a few idle minutes, so the server wakes it before each file, knocks on it every few minutes (`doc_keepalive_minutes`), and shows on the Docs tab whether it is answering; a file the printer did not take waits in the Windows print queue and prints when the printer is back. Documents are not batch-numbered and not in the print history.
 

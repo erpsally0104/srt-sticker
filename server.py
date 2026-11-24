@@ -170,15 +170,17 @@ def get_app_settings():
 def update_app_settings():
     body = request.get_json() or {}
 
-    # The FSSAI number, company name and address are legal declarations on
-    # every label, so only the admin may change them. Checked before any
-    # write so a refused request changes nothing. Values sent unchanged are
-    # let through: the settings form posts every field on each save.
+    # The FSSAI number, company name and address and the non-retail
+    # statement are legal declarations on every label, so only the admin may
+    # change them. Checked before any write so a refused request changes
+    # nothing. Values sent unchanged are let through: the settings form posts
+    # every field on each save.
     text_updates = {k: body[k] for k in body if k in LABEL_TEXT_DEFAULTS}
     if text_updates and not is_admin():
         current = get_label_text_settings()
         if any(str(v).strip() != current.get(k) for k, v in text_updates.items()):
-            return jsonify({"error": "Only the admin can change the FSSAI number, company name and address"}), 403
+            return jsonify({"error": "Only the admin can change the FSSAI number, company details "
+                                     "and non-retail statement"}), 403
         text_updates = {}
 
     # The brand and its (R) are a legal claim too (Trade Marks Act s.107),
