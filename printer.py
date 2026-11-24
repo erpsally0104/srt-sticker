@@ -10,6 +10,7 @@ import textwrap
 from parser import PrintRequest
 from settings_manager import (get_settings, normalize_roll_type, get_print_settings, get_print_offset,
                               LABEL_TEXT_DEFAULTS)
+from product_info import nutrition_rows
 
 PRINTER_NAME = "TSC TE244"
 
@@ -1195,6 +1196,150 @@ def build_fssai_label_image(req):
     return img.convert("L").point(lambda p: 0 if p < 128 else 255).convert("RGB")
 
 
+# ── Ingredients & nutrition sticker ───────────
+# The second sticker a product label brings when its item has "Ingredients
+# & nutrition sticker" ticked on the Print tab: the product's name, its
+# ingredients and allergens, and the nutrition table per 100 g, flush left.
+# It prints on the label's roll, so it keeps clear of the pre-printed veg
+# mark in the top-right corner, and it is laid out from the label's size:
+# one text size for everything, the largest that fits, never below
+# INFO_MIN_SIZE. Black on white throughout, like the large label.
+INFO_MARGIN   = 8      # px kept clear on every edge
+INFO_MIN_SIZE = 12     # px: capitals 1.1 mm tall, over FSSAI's 1 mm minimum
+INFO_BODY     = (FONT_TEXT, "SemiBold SemiCondensed")   # ingredients, the table's sub-lines
+INFO_HEAD     = ("NUTRITIONAL INFORMATION (APPROX.)", "PER 100 g")
+
+
+def _wrap_words(draw, words, width_for):
+    """
+    [(word, font)] wrapped into lines of [(word, font, gap)], each line as
+    wide as width_for(line number) allows; None in `words` starts a new
+    line. A word too long for any line is squeezed when it is drawn.
+    """
+    lines, line, x = [], [], 0
+    for item in words:
+        if item is None:
+            if line:
+                lines.append(line)
+            line, x = [], 0
+            continue
+        word, font = item
+        gap = draw.textlength(" ", font=font) if line else 0
+        w = draw.textlength(word, font=font)
+        if line and x + gap + w > width_for(len(lines)):
+            lines.append(line)
+            line, x, gap = [], 0, 0
+        line.append((word, font, gap))
+        x += gap + w
+    if line:
+        lines.append(line)
+    return lines
+
+
+def _info_layout(draw, req, rows, size):
+    """
+    Where everything goes at body text `size`: a dict of fonts, lines and
+    y positions, with "bottom", the lowest pixel it uses.
+    """
+    W, m = LABEL_W_PX, INFO_MARGIN
+    x0, x1 = m, W - m
+    veg_px = _mm_to_px(VEG_MARK_MM)
+    veg_left = W - m - veg_px - VEG_MARK_MARGIN     # the mark and its clear space, as on the large label
+    veg_low = m + veg_px + VEG_MARK_MARGIN
+    gap = round(size * 0.45)
+
+    # Title: the product's name, beside the veg mark
+    title = round(size * 1.45)
+    title_line = _fit_name(draw, req.product, veg_left - x0, (title, max(INFO_MIN_SIZE, round(title * 0.7))))[0]
+    title_base = m + 2 - _cap_top(draw, title_line[0][1])
+    y = title_base + round(title * 0.2)
+
+    # Ingredients, then the allergens on a line of their own. Lines level
+    # with the veg mark stop short of it.
+    f_key  = get_font(TEXT_BOLD_SC, size, FONT_ARIAL_NB)
+    f_body = get_font(INFO_BODY, size, FONT_ARIAL)
+    words = []
+    if req.ingredients.strip():
+        words += [("INGREDIENTS:", f_key)] + [(w, f_body) for w in req.ingredients.split()]
+    if req.allergens:
+        words += ([None] if words else []) + [("CONTAINS:", f_key)] + [(w, f_key) for w in req.allergens.split()]
+    pitch = round(size * 1.25)
+    para_top = y + gap
+    width_for = lambda i: (veg_left if para_top + i * pitch < veg_low else x1) - x0
+    lines = _wrap_words(draw, words, width_for)
+    if lines:
+        y = para_top + len(lines) * pitch
+
+    out = {"x0": x0, "x1": x1, "veg_left": veg_left, "title_line": title_line, "title_base": title_base,
+           "f_key": f_key, "f_body": f_body, "lines": lines, "para_top": para_top, "pitch": pitch,
+           "width_for": width_for, "table_top": None, "bottom": y}
+    if rows:
+        # The table spans the label, so it starts below the veg mark
+        top = max(y + gap, veg_low)
+        pad = round(size * 0.45)
+        row_h = round(size * 1.2)
+        left, right = INFO_HEAD
+        for hs in range(size, 8, -1):
+            f_head = get_font(TEXT_BOLD_SC, hs, FONT_ARIAL_NB)
+            if draw.textlength(left, font=f_head) + draw.textlength(right, font=f_head) + size \
+                    <= x1 - x0 - 2 * pad:
+                break
+        height = pad + row_h + 3 + len(rows) * row_h + pad
+        out.update(table_top=top, pad=pad, row_h=row_h, f_head=f_head, table_h=height,
+                   indent=round(size * 0.9), bottom=top + height)
+    return out
+
+
+def build_info_label_image(req):
+    """
+    Build a product's ingredients & nutrition sticker from req.ingredients,
+    req.allergens and req.nutrition, sized for the current label.
+    """
+    W, H = LABEL_W_PX, LABEL_H_PX
+    img  = Image.new("RGB", (W, H), color="white")
+    draw = ImageDraw.Draw(img)
+    rows = nutrition_rows(req.nutrition)
+
+    # Sizes are tuned on the 40 mm small label and grow with a taller one.
+    # Without a table the ingredients can be set larger.
+    scale = H / 320
+    for size in range(round((20 if rows else 30) * scale), INFO_MIN_SIZE - 1, -1):
+        L = _info_layout(draw, req, rows, size)
+        if L["bottom"] <= H - INFO_MARGIN:
+            break
+    x0, x1 = L["x0"], L["x1"]
+
+    _draw_parts(img, draw, L["title_line"], x0, L["veg_left"], L["title_base"], centre=x0)
+
+    for i, line in enumerate(L["lines"]):
+        top = L["para_top"] + i * L["pitch"]
+        base = top + (L["pitch"] - _cap_top(draw, line[0][1])) / 2
+        _draw_parts(img, draw, line, x0, x0 + L["width_for"](i), base, centre=x0)
+
+    if rows:
+        top, pad, row_h = L["table_top"], L["pad"], L["row_h"]
+        draw.rounded_rectangle((x0, top, x1, top + L["table_h"]), radius=6, outline="black", width=2)
+        tx0, tx1 = x0 + pad, x1 - pad
+        left, right = INFO_HEAD
+        y = top + pad
+        base = y + (row_h - _cap_top(draw, L["f_head"])) / 2
+        draw.text((tx0, base), left, font=L["f_head"], fill="black", anchor="ls")
+        draw.text((tx1, base), right, font=L["f_head"], fill="black", anchor="rs")
+        y += row_h + 1
+        draw.line([(x0, y), (x1, y)], fill="black", width=2)
+        y += 2
+        for label, amount, sub in rows:
+            font = L["f_body"] if sub else L["f_key"]
+            base = y + (row_h - _cap_top(draw, font)) / 2
+            draw.text((tx0 + (L["indent"] if sub else 0), base), label, font=font, fill="black", anchor="ls")
+            draw.text((tx1, base), amount, font=font, fill="black", anchor="rs")
+            y += row_h
+
+    # Threshold rather than leave it to _pack_mono(), whose dithering
+    # speckles the anti-aliased edges of type this small
+    return img.convert("L").point(lambda p: 0 if p < 128 else 255).convert("RGB")
+
+
 # Geometry lives in module globals that _apply_geometry() rewrites, so a
 # preview must not re-point them halfway through the worker's render.
 _render_lock = threading.RLock()
@@ -1215,6 +1360,35 @@ def render_label(req, batch_no: str = ""):
         if roll == "large":
             return build_large_label_image(req, batch_no)
         return build_label_image(req, batch_no)
+
+
+def has_info_sticker(req) -> bool:
+    """Whether each of req's labels is followed by an ingredients & nutrition sticker."""
+    return req.label_type == "product" and req.info_sticker
+
+
+def render_info_label(req):
+    """The ingredients & nutrition sticker that follows req's product label, sized for its label type."""
+    with _render_lock:
+        _apply_geometry(req.roll_type)
+        return build_info_label_image(req)
+
+
+def render_preview(req, batch_no: str = ""):
+    """
+    What one of req's labels prints as, for /api/preview: the label, with its
+    ingredients & nutrition sticker under it when it has one, a grey gap
+    between so they read as two stickers.
+    """
+    label = render_label(req, batch_no)
+    if not has_info_sticker(req):
+        return label
+    info = render_info_label(req)
+    gap  = 16
+    out  = Image.new("RGB", (label.width, label.height + gap + info.height), (190, 190, 190))
+    out.paste(label, (0, 0))
+    out.paste(info, (0, label.height + gap))
+    return out
 
 
 def _pack_mono(img):
@@ -1311,11 +1485,20 @@ def _send_to_printer(tspl_data: bytes) -> bool:
 
 
 def print_label(req, batch_no: str = "") -> bool:
-    """One-per-row path (single or large roll): print `req.quantity` identical labels."""
+    """
+    One-per-row path (single or large roll): print `req.quantity` identical
+    labels. A label with an ingredients & nutrition sticker is followed by
+    it, one pair after another, so each pack's two come off together.
+    """
     try:
         with _render_lock:
             img  = render_label(req, batch_no)
-            tspl = _tspl_header(LABEL_W_MM, LABEL_H_MM) + _bitmap_block(_offset(img), req.quantity)
+            tspl = _tspl_header(LABEL_W_MM, LABEL_H_MM)
+            if has_info_sticker(req):
+                info = render_info_label(req)
+                tspl += (_bitmap_block(_offset(img), 1) + _bitmap_block(_offset(info), 1)) * req.quantity
+            else:
+                tspl += _bitmap_block(_offset(img), req.quantity)
     except Exception as e:
         print(f"[Printer Error] {e}")
         return False

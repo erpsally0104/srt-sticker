@@ -16,7 +16,8 @@ class PrintRequest:
     packed_on: str
     best_before: str
     label_type: str = "product"  # "product", "ingredients" or "fssai"
-    ingredients: str = ""        # raw ingredients text for ingredients labels
+    ingredients: str = ""        # raw ingredients text for ingredients labels, and
+                                 # for a product label's info sticker
     hotel: str = "general"       # hotel/client this product belongs to
     fssai_number: str = ""       # licence number for FSSAI logo labels
     roll_type: str = ""          # "single", "double" or "large"; "" = the default
@@ -26,6 +27,10 @@ class PrintRequest:
                                  # name (PHALLI → PEANUTS) or corrected a typo
     as_typed: bool = False       # print the name exactly as typed: no English
                                  # name, no other-name or typo correction
+    info_sticker: bool = False   # product label: each one is followed by an
+                                 # ingredients & nutrition sticker
+    nutrition: dict = field(default_factory=dict)   # that sticker's values per 100 g,
+                                 # keyed as product_info.NUTRIENTS; {} = ingredients only
 
 
 def resolve_date(raw: str, fallback: datetime = None) -> Optional[datetime]:

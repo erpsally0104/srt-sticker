@@ -646,6 +646,28 @@ header {
 .as-typed input { width: 18px; height: 18px; margin: 0; accent-color: var(--saffron); cursor: pointer; }
 .as-typed:has(input:checked) { color: var(--saffron-dark); }
 
+/* ── Ingredients & nutrition sticker, per item ── */
+.info-toggle {
+  display: flex; align-items: center; gap: 6px; margin-top: 10px; width: fit-content;
+  font-size: 0.75rem; font-weight: 600; color: var(--muted);
+  cursor: pointer; touch-action: manipulation; user-select: none;
+}
+.info-toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--saffron); cursor: pointer; }
+.info-toggle:has(input:checked) { color: var(--saffron-dark); }
+.info-panel { margin-top: 8px; padding: 10px; border: 1.5px dashed #ccc; background: #fff; }
+.info-panel textarea {
+  width: 100%; border: 2px solid var(--border); padding: 8px 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 16px; background: var(--paper); color: var(--ink);
+  outline: none; border-radius: 0; resize: vertical; -webkit-appearance: none; appearance: none;
+}
+.info-note { font-size: 0.72rem; color: var(--muted); margin-bottom: 8px; line-height: 1.4; }
+.info-note:empty { display: none; }
+.nutri-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 6px 8px; }
+.nutri-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 0.7rem; font-weight: 600; color: var(--muted); }
+.nutri-grid label.sub { padding-left: 10px; }
+.nutri-grid input { padding: 8px 10px; }
+.info-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+
 /* ── Focus visibility (a11y) ─────────────────── */
 .job-card-remove:focus-visible,
 .job-card-clone:focus-visible,
@@ -2397,6 +2419,7 @@ function onAsTypedChange(id) {
   // Fill an empty weight from the product the name now means; never clear one
   const entry = productEntry(el?.value, isAsTyped(id));
   if (entry && wt && !wt.value.trim()) { wt.value = weightForForm(entry.weight); updateUOM(id); }
+  syncRowInfo(id);
   refreshAfterChange();
 }
 
@@ -2600,6 +2623,24 @@ let printerOnline = null; // null=unknown, true/false from checkStatus
 let comboState = {};     // { [rowId]: { items, hasNew, active, val } }
 const DRAFT_KEY = 'srt_print_draft';
 
+// An item's ingredients & nutrition sticker. Mirrors product_info.NUTRIENTS:
+// [key, label, unit, set under the line above, largest value accepted]
+const NUTRI_FIELDS = [
+  ['energy_kcal',     'Energy',        'kcal', false, 900],
+  ['protein_g',       'Protein',       'g',    false, 100],
+  ['carbohydrate_g',  'Carbohydrate',  'g',    false, 100],
+  ['total_sugars_g',  'Total sugars',  'g',    true,  100],
+  ['added_sugars_g',  'Added sugars',  'g',    true,  100],
+  ['total_fat_g',     'Total fat',     'g',    false, 100],
+  ['saturated_fat_g', 'Saturated fat', 'g',    true,  100],
+  ['trans_fat_g',     'Trans fat',     'g',    true,  100],
+  ['sodium_mg',       'Sodium',        'mg',   false, 40000],
+];
+const MAX_INGREDIENTS_LEN = 300;   // product_info.MAX_INGREDIENTS_LEN
+// Per row with the sticker ticked: the product its fields were filled in
+// for (key), whether they were edited since, and where they came from
+let rowInfo = {};        // { [rowId]: { key, edited, saved, source, pending } }
+
 function getUOM(val) {
   const s = String(val ?? '').trim();
   const n = parseFloat(s);
@@ -2640,7 +2681,9 @@ function onProductSelect(id) {
   }
 }
 
-function addRow(product='', qty='', weight='', asTyped=false) {
+// `info`: the row's ingredients & nutrition sticker as captureRowInfo()
+// keeps it (a restored draft, a clone, an undone remove), or null for none.
+function addRow(product='', qty='', weight='', asTyped=false, info=null) {
   rowId++;
   const id  = rowId;
   const div = document.createElement('div');
@@ -2682,15 +2725,207 @@ function addRow(product='', qty='', weight='', asTyped=false) {
         Print as typed
       </label>
     </div>
+    <label class="info-toggle" title="Print an ingredients & nutrition sticker after each of these labels">
+      <input type="checkbox" id="info-${id}" onchange="onInfoToggle(${id})"/>
+      + Ingredients &amp; nutrition sticker
+    </label>
+    <div class="info-panel" id="infopanel-${id}" hidden>
+      <div class="info-note" id="infonote-${id}" aria-live="polite"></div>
+      <label class="form-label" for="ing-${id}">Ingredients</label>
+      <textarea id="ing-${id}" rows="2" maxlength="${MAX_INGREDIENTS_LEN}" placeholder="e.g. Cashew kernels"
+        oninput="onInfoEdit(${id})"></textarea>
+      <div class="form-label" style="margin-top:10px;">Nutrition per 100 g
+        <span style="text-transform:none; letter-spacing:0; font-weight:400; color:var(--muted);">· all blank prints the ingredients only</span></div>
+      <div class="nutri-grid">
+        ${NUTRI_FIELDS.map(([key, label, unit, sub]) => `
+        <label class="${sub ? 'sub' : ''}">${label} (${unit})
+          <input type="number" id="nut-${id}-${key}" min="0" step="any" inputmode="decimal" oninput="onInfoEdit(${id})"/>
+        </label>`).join('')}
+      </div>
+      <div class="info-actions">
+        <button type="button" class="btn-small" id="infosave-${id}" onclick="saveRowInfo(${id})">💾 Save for this product</button>
+        <button type="button" class="link-btn" onclick="refillRowInfo(${id})">↺ Fill in again</button>
+      </div>
+      <div class="field-note">Not saved, your changes print with this item only.</div>
+    </div>
     <button type="button" class="job-card-preview" onclick="previewRow(${id})" aria-label="Preview this label" title="Preview label">👁</button>
     <button type="button" class="job-card-clone" onclick="cloneRow(${id})" aria-label="Duplicate this item" title="Duplicate item">⧉</button>
     <button type="button" class="job-card-remove" onclick="removeRow(${id})" aria-label="Remove this item" title="Remove item">×</button>
   `;
   document.getElementById('jobRows').appendChild(div);
   renderCombo(id, '');
+  if (info) restoreRowInfo(id, info);
   // A reprint or restored draft may carry an old name (PHALLI): show the English one
   if (product) canonicalizeRow(id, false);
   return id;
+}
+
+// ── Ingredients & nutrition sticker ──────────
+const isInfoOn = id => !!document.getElementById(`info-${id}`)?.checked;
+const rowProduct = id => (document.getElementById(`prod-${id}`)?.value || '').trim().toUpperCase();
+// The product an item's info is looked up for: its name, in the print hotel
+const infoKey = id => `${getSelectedPrintHotel()}|${normName(rowProduct(id))}`;
+
+function onInfoToggle(id) {
+  const on = isInfoOn(id);
+  document.getElementById(`infopanel-${id}`).hidden = !on;
+  clearRowError(id);
+  if (on) syncRowInfo(id);
+  refreshAfterChange();
+}
+
+function setInfoNote(id, text) {
+  const el = document.getElementById(`infonote-${id}`);
+  if (el) el.textContent = text;
+}
+
+function infoNoteText(st, hasNutrition, hasIngredients) {
+  if (st.edited) return '✏️ Edited: prints as shown here. 💾 Save keeps it for next time.';
+  if (st.saved)  return '💾 Saved for this product.';
+  if (st.source) return `Filled in from ${st.source}. Typical values, not a test of your stock: check the ones you sell most against the supplier's spec.`;
+  if (hasIngredients) return 'No published nutrition values for this product. Enter them, or leave them blank to print the ingredients only.';
+  return 'Nothing on file for this product. Enter the ingredients, the nutrition values, or both.';
+}
+
+// Fill the fields in for the item's product: its saved copy, else the
+// catalog's. Edited fields are never overwritten. Resolves when done, so
+// printing can wait for a lookup still on its way.
+function syncRowInfo(id) {
+  if (!isInfoOn(id)) return Promise.resolve();
+  const key = infoKey(id);
+  const st  = rowInfo[id];
+  if (st && st.key === key) return st.pending || Promise.resolve();
+  const product = rowProduct(id);
+  if (st?.edited) {
+    st.key = key;
+    if (product) setInfoNote(id, `✏️ Your edits are kept. Check they suit ${product}.`);
+    return Promise.resolve();
+  }
+  if (!product) {
+    rowInfo[id] = { key, edited: false };
+    setInfoNote(id, 'Enter a product, and its ingredients and nutrition fill in here.');
+    return Promise.resolve();
+  }
+  setInfoNote(id, 'Loading…');
+  const entry = rowInfo[id] = { key, edited: false };
+  entry.pending = (async () => {
+    try {
+      const res = await apiFetch(`${API}/product-info?product=${encodeURIComponent(product)}&hotel=${encodeURIComponent(getSelectedPrintHotel())}`);
+      if (!res) return;
+      const d = await res.json().catch(() => ({}));
+      if (rowInfo[id] !== entry || entry.edited) return;    // replaced or edited meanwhile
+      if (!res.ok) { setInfoNote(id, '❌ ' + cleanServerError(d.error || 'Could not load the ingredients and nutrition')); return; }
+      fillRowInfo(id, d, key);
+    } catch { if (rowInfo[id] === entry) setInfoNote(id, '❌ Cannot reach the server to fill these in'); }
+    finally { if (rowInfo[id] === entry) delete entry.pending; }
+  })();
+  return entry.pending;
+}
+
+function fillRowInfo(id, d, key) {
+  const ing = document.getElementById(`ing-${id}`);
+  if (ing) { ing.value = d.ingredients || ''; ing.classList.remove('error'); }
+  NUTRI_FIELDS.forEach(([k]) => {
+    const el = document.getElementById(`nut-${id}-${k}`);
+    if (el) { el.value = d.nutrition?.[k] ?? ''; el.classList.remove('error'); }
+  });
+  rowInfo[id] = { key, edited: false, saved: !!d.saved, source: d.source || '' };
+  setInfoNote(id, infoNoteText(rowInfo[id], Object.keys(d.nutrition || {}).length, !!d.ingredients));
+  saveDraft();
+}
+
+function onInfoEdit(id) {
+  const st = rowInfo[id] || (rowInfo[id] = { key: infoKey(id) });
+  st.edited = true;
+  delete st.pending;
+  setInfoNote(id, infoNoteText(st));
+  [document.getElementById(`ing-${id}`), ...NUTRI_FIELDS.map(([k]) => document.getElementById(`nut-${id}-${k}`))]
+    .forEach(el => el?.classList.remove('error'));
+  clearRowError(id);
+  refreshAfterChange();
+}
+
+// Back to the saved or catalog values, dropping any edits
+function refillRowInfo(id) {
+  delete rowInfo[id];
+  clearRowError(id);
+  syncRowInfo(id);
+}
+
+// The row's sticker as the server takes it, {ingredients, nutrition}, or
+// {error} after marking the field at fault. Mirrors product_info.clean_info(),
+// which also checks that no part is bigger than its whole.
+function rowInfoPayload(id) {
+  const ingEl  = document.getElementById(`ing-${id}`);
+  const fields = NUTRI_FIELDS.map(f => [f, document.getElementById(`nut-${id}-${f[0]}`)]);
+  [ingEl, ...fields.map(([, el]) => el)].forEach(el => el?.classList.remove('error'));
+  const ingredients = (ingEl?.value || '').replace(/\s+/g, ' ').trim();
+  const nutrition = {}, blank = [];
+  for (const [[key, label, unit, , top], el] of fields) {
+    const raw = (el?.value || '').trim();
+    if (!raw) { blank.push([el, label]); continue; }
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < 0 || v > top) {
+      el?.classList.add('error');
+      return { error: `${label} must be from 0 to ${top} ${unit} per 100 g.` };
+    }
+    nutrition[key] = v;
+  }
+  const filled = Object.keys(nutrition).length;
+  if (filled && blank.length) {
+    blank.forEach(([el]) => el?.classList.add('error'));
+    return { error: `Fill in every nutrition value or leave them all blank (${blank.map(([, l]) => l.toLowerCase()).join(', ')} missing).` };
+  }
+  if (!ingredients && !filled) {
+    ingEl?.classList.add('error');
+    return { error: 'Enter the ingredients, the nutrition values, or both, or untick the sticker.' };
+  }
+  if (ingredients.length > MAX_INGREDIENTS_LEN) {
+    ingEl?.classList.add('error');
+    return { error: `Ingredients must be ${MAX_INGREDIENTS_LEN} characters or fewer.` };
+  }
+  return { ingredients, nutrition };
+}
+
+async function saveRowInfo(id) {
+  const product = rowProduct(id);
+  if (!product) { document.getElementById(`prod-${id}`)?.focus(); showToast('Enter a product first'); return; }
+  const info = rowInfoPayload(id);
+  if (info.error) { setRowError(id, info.error); return; }
+  clearRowError(id);
+  const btn = document.getElementById(`infosave-${id}`);
+  if (btn) btn.disabled = true;
+  try {
+    const r = await postJson('/product-info/save', { product, hotel: getSelectedPrintHotel(), ...info });
+    if (!r) return;
+    if (!r.ok) { setRowError(id, cleanServerError(r.data.error || 'Could not save')); return; }
+    fillRowInfo(id, r.data, infoKey(id));
+    showToast(`✅ ${r.data.message}`);
+  } catch { showToast('❌ Cannot reach server'); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+// What the row's sticker fields hold, for a draft, a clone or an undo
+function captureRowInfo(id) {
+  if (!isInfoOn(id)) return null;
+  const st = rowInfo[id] || {};
+  const nutrition = {};
+  NUTRI_FIELDS.forEach(([k]) => { nutrition[k] = document.getElementById(`nut-${id}-${k}`)?.value ?? ''; });
+  return { ingredients: document.getElementById(`ing-${id}`)?.value || '', nutrition,
+           key: st.key || '', edited: !!st.edited, saved: !!st.saved, source: st.source || '' };
+}
+
+function restoreRowInfo(id, info) {
+  document.getElementById(`info-${id}`).checked = true;
+  document.getElementById(`infopanel-${id}`).hidden = false;
+  document.getElementById(`ing-${id}`).value = info.ingredients || '';
+  NUTRI_FIELDS.forEach(([k]) => {
+    const el = document.getElementById(`nut-${id}-${k}`);
+    if (el) el.value = info.nutrition?.[k] ?? '';
+  });
+  rowInfo[id] = { key: info.key || infoKey(id), edited: !!info.edited, saved: !!info.saved, source: info.source || '' };
+  const values = NUTRI_FIELDS.some(([k]) => String(info.nutrition?.[k] ?? '').trim());
+  setInfoNote(id, infoNoteText(rowInfo[id], values, !!(info.ingredients || '').trim()));
 }
 
 function removeRow(id) {
@@ -2703,13 +2938,14 @@ function removeRow(id) {
     qty:     document.getElementById(`qty-${id}`)?.value || '',
     weight:  document.getElementById(`wt-${id}`)?.value || '',
     asTyped: isAsTyped(id),
+    info:    captureRowInfo(id),
   };
   removeRowEl(id);
   ensureTrailingRow();
   refreshAfterChange();
   if (!saved.product.trim() && !saved.qty) return;
   showToast(`Removed ${saved.product.trim() || 'item'}`, { label: 'Undo', fn: () => {
-    const newId = addRow(saved.product, saved.qty, saved.weight, saved.asTyped);
+    const newId = addRow(saved.product, saved.qty, saved.weight, saved.asTyped, saved.info);
     const before = document.querySelectorAll('.job-card')[index];
     const el = document.getElementById(`row-${newId}`);
     if (before && el && before !== el) before.parentNode.insertBefore(el, before);
@@ -2722,6 +2958,7 @@ function removeRowEl(id) {
   delete comboState[id];
   delete typedAs[id];
   delete swapWeight[id];
+  delete rowInfo[id];
 }
 
 function setRowError(id, msg) {
@@ -2740,7 +2977,7 @@ function cloneRow(id) {
   const prod = document.getElementById(`prod-${id}`)?.value || '';
   const qty  = document.getElementById(`qty-${id}`)?.value || '';
   const wt   = document.getElementById(`wt-${id}`)?.value || '';
-  const newId = addRow(prod, qty, wt, isAsTyped(id));
+  const newId = addRow(prod, qty, wt, isAsTyped(id), captureRowInfo(id));
   // Place the clone directly after the source row
   const src   = document.getElementById(`row-${id}`);
   const clone = document.getElementById(`row-${newId}`);
@@ -2889,7 +3126,7 @@ function onProductFocus(id) {
   }, 350);
 }
 function onComboBlur(id) {
-  setTimeout(() => { setComboOpen(id, false); canonicalizeRow(id); }, 200);
+  setTimeout(() => { setComboOpen(id, false); canonicalizeRow(id); syncRowInfo(id); }, 200);
 }
 function onComboInput(id, e) {
   const v = document.getElementById(`prod-${id}`);
@@ -2925,6 +3162,7 @@ function selectComboItem(id, idx) {
   setComboOpen(id, false);
   maybeAddTrailingRow(id);
   document.getElementById(`qty-${id}`)?.focus();
+  syncRowInfo(id);
   refreshAfterChange();
 }
 
@@ -3002,11 +3240,23 @@ async function submitPrint() {
   const jobRowIds = [];   // row id for each entry in jobs, to match results back
   let hasError  = false;
 
+  // A sticker whose values are still loading, or are for a product changed
+  // since, is filled in first, so no item prints another product's values
+  await Promise.all([...rows].map(row => syncRowInfo(row.id.replace('row-',''))));
+
   rows.forEach(row => {
     const id   = row.id.replace('row-','');
     const line = rowLine(id);
     if (line === null) { hasError = true; return; }
-    if (line) { jobs.push(isAsTyped(id) ? { line, as_typed: true } : { line }); jobRowIds.push(id); }
+    if (!line) return;
+    const job = isAsTyped(id) ? { line, as_typed: true } : { line };
+    if (isInfoOn(id)) {
+      const info = rowInfoPayload(id);
+      if (info.error) { setRowError(id, info.error); hasError = true; return; }
+      job.info = info;
+    }
+    jobs.push(job);
+    jobRowIds.push(id);
   });
 
   if (hasError) { showToast('Fix highlighted fields'); return; }
@@ -3051,7 +3301,7 @@ async function submitPrint() {
 
     if (!failed.length) {
       document.getElementById('jobRows').innerHTML='';
-      comboState = {}; typedAs = {}; swapWeight = {};
+      comboState = {}; typedAs = {}; swapWeight = {}; rowInfo = {};
       rowId=0; addRow();
       localStorage.removeItem(DRAFT_KEY);
       hideDateNotice();
@@ -3059,7 +3309,7 @@ async function submitPrint() {
       updateSummary();
       // The results list is left behind on this tab, so the toast carries
       // what matters from it: how much, on which labels, and any renames
-      const total = results.reduce((s, r) => s + (parseInt(r.quantity) || 0), 0);
+      const total = results.reduce((s, r) => s + (parseInt(r.quantity) || 0) * (r.info_sticker ? 2 : 1), 0);
       const fixes = results.filter(r => r.requested_as).map(r => `${r.requested_as} → ${r.product}`);
       showToast(`✅ Queued ${results.length} item${results.length !== 1 ? 's' : ''} · ${total} sticker${total !== 1 ? 's' : ''} on ${rollLabel(getRollType())}`
         + (fixes.length ? ` · ${fixes.slice(0, 2).join(', ')}${fixes.length > 2 ? ' …' : ''}` : ''));
@@ -3094,7 +3344,7 @@ function showResults(results) {
       d.innerHTML = `
         <div class="result-icon">✅</div>
         <div>
-          <div class="result-product">${escHtml(r.product)}${r.requested_as ? ` <span class="result-typed">(typed ${escHtml(r.requested_as)})</span>` : ''}${r.as_typed ? ' <span class="result-typed">(as typed)</span>' : ''} × ${escHtml(r.quantity)} — queued</div>
+          <div class="result-product">${escHtml(r.product)}${r.requested_as ? ` <span class="result-typed">(typed ${escHtml(r.requested_as)})</span>` : ''}${r.as_typed ? ' <span class="result-typed">(as typed)</span>' : ''} × ${escHtml(r.quantity)}${r.info_sticker ? ' <span class="result-typed">+ ingredients &amp; nutrition sticker each</span>' : ''} — queued</div>
           <div class="result-detail">
             ${escHtml(r.weight)} · Packed: ${escHtml(r.packed_on)} · Use By: ${escHtml(r.best_before)}${r.allergens ? ` · Contains: ${escHtml(r.allergens)}` : ''}<br>
             Batch: <span class="result-batch">${escHtml(r.batch_no)}</span>
@@ -3113,7 +3363,7 @@ function resetAll() {
   const hadItems = before.rows.some(r => (r.product||'').trim() || r.qty);
   document.getElementById('jobRows').innerHTML='';
   document.getElementById('results').innerHTML='';
-  comboState = {}; typedAs = {}; swapWeight = {};
+  comboState = {}; typedAs = {}; swapWeight = {}; rowInfo = {};
   rowId=0; addRow();
   localStorage.removeItem(DRAFT_KEY);
   hideDateNotice();
@@ -3213,19 +3463,24 @@ function setQty(id, n) {
 }
 
 // ── Summary + button state ───────────────────
+// `rows2up`: rows on a 2-up roll, worked out as the print queue lays them:
+// an item with info stickers puts each label beside its own, starting a row.
 function computeTotals() {
-  let items = 0, stickers = 0;
+  let items = 0, stickers = 0, infos = 0, units = 0;
   document.querySelectorAll('.job-card').forEach(row => {
     const id   = row.id.replace('row-','');
     const prod = (document.getElementById(`prod-${id}`)?.value||'').trim();
     const qty  = parseInt(document.getElementById(`qty-${id}`)?.value||'0');
-    if (prod && qty > 0) { items++; stickers += qty; }
+    if (!(prod && qty > 0)) return;
+    items++; stickers += qty;
+    if (isInfoOn(id)) { infos += qty; units += (units % 2) + 2 * qty; }
+    else units += qty;
   });
-  return { items, stickers };
+  return { items, stickers: stickers + infos, infos, rows2up: Math.ceil(units / 2) };
 }
 
 function updateSummary() {
-  const { items, stickers } = computeTotals();
+  const { items, stickers, infos, rows2up } = computeTotals();
   const el  = document.getElementById('printSummary');
   const btn = document.getElementById('printBtn');
   if (el) {
@@ -3234,10 +3489,11 @@ function updateSummary() {
       el.textContent = 'Add a product and quantity to print';
     } else {
       const roll = getRollType();
-      let txt = `<strong>${items}</strong> item${items!==1?'s':''} · <strong>${stickers}</strong> sticker${stickers!==1?'s':''}`;
+      let txt = `<strong>${items}</strong> item${items!==1?'s':''} · <strong>${stickers}</strong> sticker${stickers!==1?'s':''}`
+        + (infos ? ` (${infos} ingredients &amp; nutrition)` : '');
       // The label size, every time: printing on the wrong roll wastes the lot
       if (roll === 'double') {
-        const nrows = Math.ceil(stickers / 2);
+        const nrows = rows2up;
         txt += ` · ≈ <strong>${nrows}</strong> row${nrows!==1?'s':''} on the <strong>2-up ${smallSize(savedSettings)}</strong> roll`;
       } else {
         txt += ` · on <strong>${roll === 'large' ? largeSize(savedSettings) : smallSize(savedSettings)}</strong> labels`;
@@ -3265,6 +3521,7 @@ function captureFormState() {
       qty:     document.getElementById(`qty-${id}`)?.value || '',
       weight:  document.getElementById(`wt-${id}`)?.value || '',
       asTyped: isAsTyped(id),
+      info:    captureRowInfo(id),
     });
   });
   return {
@@ -3296,9 +3553,9 @@ function applyFormState(st) {
     updateRollHint();
   }
   document.getElementById('jobRows').innerHTML = '';
-  comboState = {}; typedAs = {}; swapWeight = {};
+  comboState = {}; typedAs = {}; swapWeight = {}; rowInfo = {};
   rowId = 0;
-  (st.rows || []).forEach(r => addRow(r.product||'', r.qty||'', r.weight||'', !!r.asTyped));
+  (st.rows || []).forEach(r => addRow(r.product||'', r.qty||'', r.weight||'', !!r.asTyped, r.info || null));
   ensureTrailingRow();
 
   setDefaultDates();
@@ -3328,7 +3585,7 @@ function restoreDraftOrDefault() {
 
   if (!hasContent) {
     document.getElementById('jobRows').innerHTML = '';
-    comboState = {}; typedAs = {}; swapWeight = {};
+    comboState = {}; typedAs = {}; swapWeight = {}; rowInfo = {};
     rowId = 0;
     addRow();
     setDefaultDates();
@@ -3418,7 +3675,7 @@ async function loadProducts() {
   // English names now — all but one still being typed in
   document.querySelectorAll('.job-card').forEach(row => {
     const id = row.id.replace('row-', '');
-    if (document.activeElement?.id !== `prod-${id}`) canonicalizeRow(id, false);
+    if (document.activeElement?.id !== `prod-${id}`) { canonicalizeRow(id, false); syncRowInfo(id); }
   });
   renderProducts();
   refreshUseBy();
@@ -3459,6 +3716,7 @@ function onPrintHotelChange() {
   document.querySelectorAll('.job-card').forEach(row => {
     const id = row.id.replace('row-','');
     onProductSelect(id);
+    syncRowInfo(id);    // another hotel may keep other values
   });
   refreshAfterChange();
 }
@@ -4006,7 +4264,7 @@ function queueRowHtml(j) {
     <div class="queue-item ${escHtml(s)}">
       <div class="queue-status">${icon}</div>
       <div class="queue-info">
-        <div class="queue-product">${escHtml(j.product)} × ${escHtml(j.quantity)}${rollBadge(j.roll_type)}${j.test ? ' <span class="badge badge-ui">test</span>' : ''}</div>
+        <div class="queue-product">${escHtml(j.product)} × ${escHtml(j.quantity)}${rollBadge(j.roll_type)}${j.info_sticker ? ' <span class="badge badge-ui" title="Each label is followed by its ingredients & nutrition sticker">+ ingredients &amp; nutrition</span>' : ''}${j.test ? ' <span class="badge badge-ui">test</span>' : ''}</div>
         <div class="queue-detail">
           ${j.weight ? escHtml(j.weight) + ' · ' : ''}${escHtml(when)}${j.batch_no ? ' · Batch: ' + escHtml(j.batch_no) : ''}
           ${j.source === 'telegram' ? ' · <span class="badge badge-telegram">telegram</span>' : ''}
@@ -4134,7 +4392,7 @@ function fillFormFromLogs(logs) {
 
   document.getElementById('jobRows').innerHTML = '';
   document.getElementById('results').innerHTML = '';
-  comboState = {}; typedAs = {}; swapWeight = {};
+  comboState = {}; typedAs = {}; swapWeight = {}; rowInfo = {};
   rowId = 0;
   // A label printed as typed reprints as typed; anything else gets today's English name
   logs.forEach(l => addRow(l.product || '', String(l.quantity ?? ''), weightForForm(l.weight), !!l.as_typed));
@@ -4343,10 +4601,16 @@ function closePreview() {
   document.getElementById('previewModal').hidden = true;
 }
 
-function previewRow(id) {
+async function previewRow(id) {
   const prod = (document.getElementById(`prod-${id}`)?.value || '').trim().toUpperCase();
   if (!prod) { document.getElementById(`prod-${id}`)?.focus(); showToast('Enter a product to preview'); return; }
   const wt = (document.getElementById(`wt-${id}`)?.value || '').trim();
+  let info = null;
+  if (isInfoOn(id)) {
+    await syncRowInfo(id);
+    info = rowInfoPayload(id);
+    if (info.error) { setRowError(id, info.error); return; }
+  }
   // The quantity doesn't change the label, so an empty one isn't a reason to refuse
   showPreview({
     line:        wt ? `${prod},1,${wt}` : `${prod},1`,
@@ -4354,7 +4618,9 @@ function previewRow(id) {
     hotel:       getSelectedPrintHotel(),
     packed_on:   formatDateForServer(document.getElementById('packedDate')?.value || ''),
     best_before: useByAuto ? '' : formatDateForServer(document.getElementById('bestBeforeDate')?.value || ''),
-  }, 'The batch number is shown as xxx here; the real one is assigned when it prints.');
+    ...(info ? { info } : {}),
+  }, (info ? 'Each label prints with this ingredients & nutrition sticker straight after it. ' : '')
+     + 'The batch number is shown as xxx here; the real one is assigned when it prints.');
 }
 
 function previewIngredients() {

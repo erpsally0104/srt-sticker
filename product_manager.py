@@ -5,6 +5,7 @@ import shutil
 
 from settings_manager import get_default_shelf_months, SHELF_MONTHS_LIMITS
 from product_catalog import migrate as migrate_to_english, norm
+from product_info import seed_info
 
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
 BACKUP_FILE   = PRODUCTS_FILE + ".bak"
@@ -20,12 +21,15 @@ HOTEL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,29}$")
 
 # A product's entry is its weight string ("2 kg") or, once it has more than
 # a weight, {"weight": "2 kg", "shelf_months": 6, "aliases": [...],
-# "allergens": [...]} with only the keys it uses. Plain strings stay the
-# norm so older files, recover_products.py and hand edits keep working.
+# "allergens": [...], "ingredients": "...", "nutrition": {...}} with only
+# the keys it uses. Plain strings stay the norm so older files,
+# recover_products.py and hand edits keep working.
 #
 # Aliases are the other names a product is typed as (PHALLI for PEANUTS);
 # allergens print on the label as "CONTAINS: ...". A hotel's entry that sets
 # neither uses its General entry's, so they are kept in one place.
+# Ingredients and nutrition are the ones saved from the Print tab for the
+# product's info sticker (see product_info.py), and fall back the same way.
 _KEEP = object()   # add/update_product(): leave this field as it is
 
 MAX_ALIASES     = 20
@@ -49,9 +53,19 @@ def _entry_allergens(val) -> list:
     return list(val.get("allergens") or []) if isinstance(val, dict) else []
 
 
-def _make_entry(weight: str, shelf_months, aliases=None, allergens=None):
+def _entry_info(val) -> dict:
+    """The saved {"ingredients", "nutrition"} for the info sticker, with only the keys it has."""
+    if not isinstance(val, dict):
+        return {}
+    return {k: val[k] for k in ("ingredients", "nutrition") if val.get(k)}
+
+
+def _make_entry(weight: str, shelf_months, aliases=None, allergens=None, info=None):
     extra = {k: v for k, v in (("shelf_months", shelf_months), ("aliases", aliases),
                                ("allergens", allergens)) if v}
+    # Edits on the Products tab rebuild the entry, so the saved info is
+    # handed back in here every time, or it would be lost.
+    extra.update({k: v for k, v in (info or {}).items() if v})
     return {"weight": weight, **extra} if extra else weight
 
 
@@ -331,6 +345,68 @@ def find_product(product: str, hotel: str = DEFAULT_HOTEL):
     return (found["weight"], found["shelf_months"]) if found else None
 
 
+# ── Ingredients & nutrition sticker ───────────
+def get_product_info(product: str, hotel: str = DEFAULT_HOTEL) -> dict:
+    """
+    What a product's ingredients & nutrition sticker is filled in with:
+    {"name", "ingredients", "nutrition", "source", "saved"}. name is the
+    listed product, None when it isn't listed. Its own saved copy comes
+    first (a hotel's entry without one uses its General twin's, as for
+    allergens), then product_info.SEED; empty fields when neither has it.
+    No typo guess: these are declarations, so a near name must not lend
+    another product's values.
+    """
+    data  = _load()
+    hotel = hotel.lower().strip()
+    name, _ = resolve_name(product, hotel, data, typos=False)
+    names = [product]
+    if name is not None:
+        for listed, val, aliases, _ in _merged(data, hotel):
+            if listed != name:
+                continue
+            info = _entry_info(val)
+            if not info and hotel != DEFAULT_HOTEL:
+                general = data.get(DEFAULT_HOTEL, {})
+                twin = _general_twin(general, name)
+                info = _entry_info(general.get(twin)) if twin else {}
+            if info:
+                return {"name": name, "ingredients": info.get("ingredients", ""),
+                        "nutrition": info.get("nutrition", {}), "source": "", "saved": True}
+            names = [name] + aliases
+            break
+    seed = seed_info(*names)
+    if seed:
+        return {"name": name, **seed, "saved": False}
+    return {"name": name, "ingredients": "", "nutrition": {}, "source": "", "saved": False}
+
+
+def save_product_info(product: str, hotel: str, info: dict):
+    """
+    Keep `info` ({"ingredients", "nutrition"}, checked by
+    product_info.clean_info) as the product's own, so its sticker is filled
+    in that way from now on. It goes on the entry the hotel prints from: the
+    hotel's own, else General's. Returns (ok, message).
+    """
+    data  = _load()
+    hotel = hotel.lower().strip()
+    name, _ = resolve_name(product, hotel, data, typos=False)
+    if name is None:
+        return False, (f"{product} isn't in the product list, so there is nothing to save it on. "
+                       "Add it on the Products tab first.")
+    where = hotel if _find_key(data.get(hotel, {}), name) is not None else DEFAULT_HOTEL
+    prods = data.get(where, {})
+    key = _find_key(prods, name)
+    if key is None:
+        return False, f"{name} not found in [{where}]"
+    old = prods[key]
+    prods[key] = _make_entry(_entry_weight(old), _entry_shelf(old), _entry_aliases(old),
+                             _entry_allergens(old), {"ingredients": info.get("ingredients", ""),
+                                                     "nutrition": info.get("nutrition") or {}})
+    _save(data)
+    shared = " in the General list, for every hotel that uses it" if where != hotel else ""
+    return True, f"Saved the ingredients and nutrition for {name}{shared}"
+
+
 def _taken_names(prods: dict, skip_key=None) -> dict:
     """{normalised name or alias: product} for a hotel's list, leaving out skip_key."""
     taken = {}
@@ -380,12 +456,13 @@ def add_product(product: str, weight: str, hotel: str = DEFAULT_HOTEL,
     entry = _make_entry(weight,
                         keep(shelf_months, _entry_shelf(old)),
                         keep(aliases, _entry_aliases(old)),
-                        keep(allergens, _entry_allergens(old)))
+                        keep(allergens, _entry_allergens(old)),
+                        _entry_info(old))
     if aliases is not _KEEP:
         kept, err = _check_aliases(hotel_products, old_key, name, _entry_aliases(entry))
         if err:
             return f"⚠️ {err} in [{hotel}]."
-        entry = _make_entry(weight, _entry_shelf(entry), kept, _entry_allergens(entry))
+        entry = _make_entry(weight, _entry_shelf(entry), kept, _entry_allergens(entry), _entry_info(entry))
     called = f" ({product})" if how == "alias" else ""
     if old_key is not None:
         hotel_products[old_key] = entry
@@ -433,7 +510,8 @@ def update_product(old_product: str, product: str, weight: str,
     if err:
         return False, f"{err} in [{hotel}]"
     entry = _make_entry(weight, shelf_months, names,
-                        _entry_allergens(old) if allergens is _KEEP else allergens)
+                        _entry_allergens(old) if allergens is _KEEP else allergens,
+                        _entry_info(old))
 
     # Rebuilt rather than del + insert so the product keeps its place in the list
     data[hotel] = {

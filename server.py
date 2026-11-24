@@ -10,14 +10,16 @@ from auth import (init_db, verify_user, generate_tokens, verify_access_token,
                   verify_refresh_token, change_password)
 from logger import log_print, get_logs, get_all_usernames
 from parser import parse_message, format_date_pair, PrintRequest
-from printer import print_label, render_label, get_printer_status, check_printer
+from printer import print_label, render_preview, get_printer_status, check_printer
 from batch_manager import get_next_batch_number
 from print_queue import get_queue
 from product_manager import (
     add_product, remove_product, update_product, add_hotel, list_hotels,
     hotel_entries, all_hotel_entries, validate_shelf_months,
     clean_aliases, clean_allergens, product_names,
+    get_product_info, save_product_info,
 )
+from product_info import clean_info
 from settings_manager import (
     get_settings, get_roll_type, set_roll_type, normalize_roll_type, set_geometry, GEOMETRY_DEFAULTS,
     get_label_text_settings, set_label_text_settings, LABEL_TEXT_DEFAULTS,
@@ -336,6 +338,53 @@ def api_remove_product():
     return jsonify({"message": result})
 
 
+# ── Ingredients & nutrition sticker ───────────────
+@app.route("/api/product-info", methods=["GET"])
+@require_auth
+def api_product_info():
+    """What a product's ingredients & nutrition sticker is filled in with: its saved copy, else the catalog's."""
+    product = (request.args.get("product") or "").strip().upper()
+    hotel   = (request.args.get("hotel") or "general").strip().lower()
+    if not product:
+        return jsonify({"error": "Product required"}), 400
+    return jsonify(get_product_info(product, hotel))
+
+
+@app.route("/api/product-info/save", methods=["POST"])
+@require_auth
+def api_save_product_info():
+    """Keep the Print tab's ingredients and nutrition on the product, to fill in next time."""
+    body    = request.get_json() or {}
+    product = (body.get("product") or "").strip().upper()
+    hotel   = (body.get("hotel") or "general").strip().lower()
+    if not product:
+        return jsonify({"error": "Product required"}), 400
+    info, err = clean_info(body)
+    if err:
+        return jsonify({"error": err}), 400
+    ok, message = save_product_info(product, hotel, info)
+    if not ok:
+        return jsonify({"error": message}), 400
+    return jsonify({"message": message, **get_product_info(product, hotel)})
+
+
+def _attach_info(req, raw):
+    """
+    Give a product label the ingredients & nutrition sticker a job asks for
+    with "info". Returns an error for values the sticker can't print, or
+    None (also when the job asks for none).
+    """
+    if raw is None or req.label_type != "product":
+        return None
+    info, err = clean_info(raw)
+    if err:
+        return f"Ingredients & nutrition sticker: {err}"
+    req.info_sticker = True
+    req.ingredients  = info["ingredients"]
+    req.nutrition    = info["nutrition"]
+    return None
+
+
 @app.route("/api/hotels/add", methods=["POST"])
 @require_auth
 def api_add_hotel():
@@ -415,6 +464,8 @@ def print_labels():
             continue
         req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before,
                                    as_typed=bool(job.get("as_typed")))
+        if not error:
+            error = _attach_info(req, job.get("info"))
         if error:
             entries.append(("fail", line, error))
         else:
@@ -445,6 +496,7 @@ def print_labels():
             "allergens":   req.allergens,
             "requested_as": req.requested_as,
             "as_typed":    req.as_typed,
+            "info_sticker": req.info_sticker,
             "error":       None,
         })
 
@@ -454,7 +506,10 @@ def print_labels():
 @app.route("/api/preview", methods=["POST"])
 @require_auth
 def preview_label():
-    """Render one label to a PNG exactly as it would print, without queueing it."""
+    """
+    Render one label to a PNG exactly as it would print, without queueing
+    it; with its ingredients & nutrition sticker under it when the item has one.
+    """
     body  = request.get_json() or {}
     line  = (body.get("line") or "").strip()
     hotel = (body.get("hotel") or "general").strip().lower()
@@ -467,6 +522,8 @@ def preview_label():
         return jsonify({"error": err}), 400
     req, error = parse_message(line, hotel=hotel, packed_on=packed_on, best_before=best_before,
                                as_typed=bool(body.get("as_typed")))
+    if not error:
+        error = _attach_info(req, body.get("info"))
     if error:
         return jsonify({"error": error}), 400
     req.roll_type = roll
@@ -474,7 +531,7 @@ def preview_label():
     # sequence digits are left as placeholders.
     batch_no = f"SRT{datetime.now():%d%m%y}xxx" if req.label_type == "product" else ""
     try:
-        img = render_label(req, batch_no)
+        img = render_preview(req, batch_no)
     except Exception as e:
         return jsonify({"error": f"Could not render the label: {e}"}), 500
     buf = io.BytesIO()

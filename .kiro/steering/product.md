@@ -25,6 +25,8 @@ The web UI's **Docs** tab prints ordinary files (PDF, photos, Word / Excel / Pow
 
 There is also an **ingredients-only** sticker type that fills the label with auto-sized ingredient text, and an **FSSAI logo** sticker type that prints only the FSSAI logo with a 14-digit licence number beneath it (`13620011000563 ;; f 5` on Telegram). Neither takes a batch number or appears in the print history.
 
+On the web UI's Print tab, each item can also tick an **ingredients & nutrition sticker**: every label of that item is followed by a second sticker on the same roll with the product name, ingredients, allergens and a nutrition table per 100 g (one after the other on a single or large roll, side by side on a 2-up row). Ticking fills it in from the product's saved copy, else from `product_info.SEED` (reference values for the catalog products, from ICMR-NIN's IFCT 2017 or USDA FoodData Central). Edits print with that item only unless the operator presses Save, which keeps them on the product. Nutrition is not mandatory on these non-retail packs (FSSAI Reg 10(2)), and single-ingredient foods are exempt anyway; the sticker is a voluntary extra, so its values must still be accurate (at most 10% under the label, Reg 5(3)(d)). Telegram prints never add it.
+
 ## Key business rules
 
 - **Batch number format**: `SRT{DDMMYY}{3-digit sequence}` (e.g. `SRT020426001`), sequence resets daily.

@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Optional
 
 from parser import PrintRequest
-from printer import print_label, render_label, print_double_rows
+from printer import print_label, render_label, render_info_label, has_info_sticker, print_double_rows
 from batch_manager import get_next_batch_number
 from logger import log_print
 from settings_manager import get_roll_type
@@ -54,6 +54,7 @@ class QueueJob:
             "label_type": self.req.label_type,
             "roll_type": self.req.roll_type,
             "batch_no": self.batch_no,
+            "info_sticker": has_info_sticker(self.req),
             "username": self.username,
             "source": self.source,
             "status": self.status,
@@ -222,6 +223,10 @@ class PrintQueue:
         flattened into one sequence and printed two side by side per row; an
         odd final label prints alone (right column blank).
 
+        A job with an ingredients & nutrition sticker prints each label
+        followed by it: one after the other on a single or large roll, side
+        by side on a 2-up row.
+
         The body is wrapped because this runs on a daemon thread with nothing
         above it to catch anything. Rendering reads settings.json and raises
         PermissionError when the sibling process holds the file open;
@@ -314,16 +319,24 @@ class PrintQueue:
             return False
 
         # Render each job's label once, then expand into individual sticker units.
-        units = []            # one image per physical sticker
+        units = []            # one image per physical sticker; None leaves a column blank
         failed_ids = set()
         for job in jobs:
             try:
-                img = render_label(job.req, job.batch_no)
+                img  = render_label(job.req, job.batch_no)
+                info = render_info_label(job.req) if has_info_sticker(job.req) else None
             except Exception as e:
                 job.error = str(e)
                 failed_ids.add(job.id)
                 continue
-            units.extend([img] * job.req.quantity)
+            if info is None:
+                units.extend([img] * job.req.quantity)
+                continue
+            # Each label beside its own info sticker, so a pair starts a row:
+            # after an odd number of labels, the row's right column stays blank
+            if len(units) % 2:
+                units.append(None)
+            units.extend([img, info] * job.req.quantity)
 
         # Pair units two-per-row; odd leftover prints alone (right column blank).
         rows = []
